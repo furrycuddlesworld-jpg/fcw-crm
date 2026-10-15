@@ -15,6 +15,8 @@ const config = {
   waToken: process.env.WHATSAPP_TOKEN || '',
   waPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
   waVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN || 'fcw-verify',
+  // Meta app secret: when set, incoming WhatsApp webhooks must carry a valid signature.
+  waAppSecret: process.env.WHATSAPP_APP_SECRET || '',
   googleAdsKey: process.env.GOOGLE_ADS_KEY || 'fcw-google-key',
   // Password for opening the CRM (username can be anything). Webhooks stay open so WhatsApp and Google can reach them.
   appPassword: process.env.APP_PASSWORD || '',
@@ -137,9 +139,20 @@ function readBody(req) {
   return new Promise((resolve) => {
     let raw = '';
     req.on('data', (c) => { raw += c; if (raw.length > 1e6) req.destroy(); });
-    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { resolve({}); } });
+    req.on('end', () => {
+      req.rawBody = raw;
+      try { resolve(raw ? JSON.parse(raw) : {}); } catch { resolve({}); }
+    });
   });
 }
+// Meta signs each webhook with the app secret (X-Hub-Signature-256: sha256=<hex>).
+function validMetaSignature(req) {
+  if (!config.waAppSecret) return true;
+  const given = Buffer.from(String(req.headers['x-hub-signature-256'] || ''));
+  const want = Buffer.from('sha256=' + crypto.createHmac('sha256', config.waAppSecret).update(req.rawBody || '').digest('hex'));
+  return given.length === want.length && crypto.timingSafeEqual(given, want);
+}
+
 function authorized(req) {
   if (!config.appPassword) return true;
   const [scheme, encoded] = (req.headers.authorization || '').split(' ');
@@ -273,6 +286,7 @@ async function handle(req, res) {
   }
   if (p === '/webhooks/whatsapp' && req.method === 'POST') {
     const body = await readBody(req);
+    if (!validMetaSignature(req)) return send(res, 401, { error: 'Bad signature' });
     let created = 0;
     for (const entry of body.entry || []) {
       for (const change of entry.changes || []) {

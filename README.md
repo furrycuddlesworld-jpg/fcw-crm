@@ -35,6 +35,7 @@ Nothing is sent to anyone until `WHATSAPP_SEND=on` is set together with the API 
 | `WHATSAPP_SEND` | `on` to really send messages. Anything else means test mode. |
 | `WHATSAPP_TOKEN` | WhatsApp Cloud API access token from Meta |
 | `WHATSAPP_PHONE_NUMBER_ID` | The phone number ID of your business number in Meta |
+| `WHATSAPP_APP_SECRET` | Your Meta app's secret (App settings > Basic). When set, WhatsApp webhooks without a valid Meta signature are rejected. Set it before connecting WhatsApp. |
 | `WHATSAPP_VERIFY_TOKEN` | Any secret you choose, entered in Meta when setting up the webhook (default `fcw-verify`; change it) |
 | `GOOGLE_ADS_KEY` | The key you enter on the Google Ads lead form webhook (default `fcw-google-key`; change it) |
 
