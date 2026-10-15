@@ -1,0 +1,31 @@
+# Render blueprint: one web service with a small permanent disk for data.json.
+# The disk needs a paid instance; on the free plan data is wiped on every restart and reminders stop while it sleeps.
+services:
+  - type: web
+    name: fcw-crm
+    runtime: node
+    plan: starter
+    buildCommand: "true"
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    disk:
+      name: crm-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_FILE
+        value: /var/data/data.json
+      - key: APP_PASSWORD
+        sync: false
+      - key: OWNER_PHONE
+        sync: false
+      - key: WHATSAPP_SEND
+        value: "off"
+      - key: WHATSAPP_VERIFY_TOKEN
+        generateValue: true
+      - key: GOOGLE_ADS_KEY
+        generateValue: true
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false

@@ -1,0 +1,9 @@
+{
+  "name": "fcw-crm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lead tracker for WhatsApp, Google Ads and referrals, with follow-ups and reminders",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}

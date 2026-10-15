@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FCW CRM</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --text: #1d2330; --muted: #677085; --line: #e3e6eb;
+    --accent: #1f7a5c; --accent-soft: #e4f3ed; --warn: #b4560b; --warn-soft: #fdf0e3; --bad: #b42318; --bad-soft: #fde8e7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; }
+  nav { display: flex; gap: 4px; }
+  nav button { background: none; border: 0; padding: 7px 12px; border-radius: 6px; cursor: pointer; color: var(--muted); font: inherit; }
+  nav button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .mode { margin-left: auto; font-size: 12px; padding: 4px 10px; border-radius: 99px; background: var(--warn-soft); color: var(--warn); }
+  .mode.live { background: var(--accent-soft); color: var(--accent); }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .card .n { font-size: 24px; font-weight: 650; }
+  .card .l { color: var(--muted); font-size: 12px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+  section h2 { font-size: 15px; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  tr.click { cursor: pointer; } tr.click:hover { background: var(--bg); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 12px; background: var(--bg); border: 1px solid var(--line); white-space: nowrap; }
+  .s-New { background: #e8effc; border-color: #c9d8f5; } .s-Won { background: var(--accent-soft); border-color: #b9e0cf; }
+  .s-Lost { background: var(--bad-soft); border-color: #f5c6c2; } .s-Interested, .s-Proposal { background: #f1ebfb; border-color: #dccdf3; }
+  .overdue { color: var(--bad); font-weight: 600; } .today { color: var(--warn); font-weight: 600; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  input, select, textarea { font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
+  textarea { width: 100%; min-height: 64px; resize: vertical; }
+  .btn { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; color: var(--text); text-decoration: none; display: inline-block; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.small { padding: 3px 8px; font-size: 12px; }
+  .muted { color: var(--muted); } .empty { color: var(--muted); padding: 10px 0; }
+  dialog { border: 0; border-radius: 12px; padding: 0; width: min(720px, 96vw); max-height: 92vh; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+  dialog::backdrop { background: rgba(20,25,35,.4); }
+  .dlg { padding: 18px; }
+  .dlg h3 { margin: 0 0 4px; font-size: 18px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid2 label, .stack label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .hist { list-style: none; padding: 0; margin: 0; max-height: 260px; overflow: auto; }
+  .hist li { padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .hist .t { font-size: 11px; color: var(--muted); }
+  .fu { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
+  .fu.isdone { opacity: .55; }
+  .tabs { display: flex; gap: 4px; margin: 12px 0 8px; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 0; background: none; padding: 7px 10px; cursor: pointer; font: inherit; color: var(--muted); border-bottom: 2px solid transparent; }
+  .tabs button.on { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .hide { display: none !important; }
+  @media (max-width: 640px) {
+    .grid2 { grid-template-columns: 1fr; }
+    .hide-sm { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>FCW CRM</h1>
+  <nav>
+    <button data-view="today" class="on">Today</button>
+    <button data-view="leads">Leads</button>
+    <button data-view="messages">Messages</button>
+  </nav>
+  <span id="mode" class="mode">Test mode</span>
+</header>
+
+<main>
+  <div id="view-today">
+    <div class="cards" id="stats"></div>
+    <section>
+      <h2>Follow-ups due</h2>
+      <div id="due"></div>
+    </section>
+    <section>
+      <h2>Coming up</h2>
+      <div id="upcoming"></div>
+    </section>
+    <section>
+      <h2>Leads by source</h2>
+      <div class="cards" id="bySource" style="margin:0"></div>
+    </section>
+  </div>
+
+  <div id="view-leads" class="hide">
+    <div class="toolbar">
+      <input id="q" placeholder="Search name, phone, notes" style="flex:1;min-width:180px">
+      <select id="fStatus"><option value="">All statuses</option></select>
+      <select id="fSource"><option value="">All sources</option></select>
+      <button class="btn primary" id="addBtn">+ Add lead</button>
+    </div>
+    <section style="padding:6px 14px">
+      <table>
+        <thead><tr><th>Name</th><th>Status</th><th class="hide-sm">Source</th><th>Next follow-up</th><th class="hide-sm">Last activity</th></tr></thead>
+        <tbody id="leadRows"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <div id="view-messages" class="hide">
+    <section>
+      <h2>WhatsApp messages</h2>
+      <p class="muted" id="msgNote"></p>
+      <table>
+        <thead><tr><th>When</th><th>Type</th><th>To</th><th>Message</th><th>Result</th></tr></thead>
+        <tbody id="msgRows"></tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<!-- Add lead -->
+<dialog id="addDlg"><form class="dlg" id="addForm" method="dialog">
+  <h3>Add lead</h3>
+  <p class="muted" style="margin:0 0 12px">Enter the phone with country code, e.g. 919812345678.</p>
+  <div class="grid2">
+    <label>Name<input name="name" required></label>
+    <label>WhatsApp / phone<input name="phone" inputmode="tel"></label>
+    <label>Source<select name="source" id="addSource"></select></label>
+    <label>Referred by<input name="referredBy" placeholder="If a referral"></label>
+    <label>Email<input name="email" type="email"></label>
+    <label>Interested in<input name="interest"></label>
+  </div>
+  <div class="stack" style="margin-top:10px"><label>Notes<textarea name="notes"></textarea></label></div>
+  <div class="row" style="margin-top:14px;justify-content:flex-end">
+    <button class="btn" value="cancel" formnovalidate>Cancel</button>
+    <button class="btn primary" value="ok">Save lead</button>
+  </div>
+</form></dialog>
+
+<!-- Lead detail -->
+<dialog id="leadDlg"><div class="dlg" id="leadBody"></div></dialog>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let META = { statuses: [], sources: [] }, LEADS = [], OUTBOX = [], openId = null, detailTab = 'followups';
+
+const TEMPLATES = [
+  ['Gentle check-in', 'Hi {name}, just checking in on our last conversation. Is there anything I can help you with?'],
+  ['After a call', 'Hi {name}, thanks for speaking with me today. As discussed, I will share the details shortly. Feel free to message me with any questions.'],
+  ['Proposal follow-up', 'Hi {name}, did you get a chance to look at the proposal I sent? Happy to walk you through it.'],
+  ['Thank the referrer', 'Hi {name}, thank you for reaching out! {referrer} mentioned you might be interested. When is a good time to talk?'],
+];
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function fmt(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+}
+function dueClass(iso) {
+  const d = new Date(iso), n = new Date();
+  if (d <= n) return 'overdue';
+  return d.toDateString() === n.toDateString() ? 'today' : '';
+}
+function nextFollowUp(l) {
+  return l.followUps.filter((f) => !f.done).sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
+}
+const pill = (s) => `<span class="pill s-${esc(s.split(' ')[0])}">${esc(s)}</span>`;
+const waLink = (phone, text) => `https://wa.me/${phone}${text ? '?text=' + encodeURIComponent(text) : ''}`;
+const fill = (tpl, l) => tpl.replaceAll('{name}', l.name.split(' ')[0]).replaceAll('{referrer}', l.referredBy || 'A friend');
+
+// ---------- rendering ----------
+function renderToday() {
+  const open = LEADS.filter((l) => !['Won', 'Lost'].includes(l.status));
+  const all = LEADS.flatMap((l) => l.followUps.filter((f) => !f.done).map((f) => ({ l, f })));
+  const now = new Date();
+  const due = all.filter(({ f }) => new Date(f.dueAt) <= now).sort((a, b) => a.f.dueAt.localeCompare(b.f.dueAt));
+  const soon = all.filter(({ f }) => new Date(f.dueAt) > now).sort((a, b) => a.f.dueAt.localeCompare(b.f.dueAt)).slice(0, 10);
+  const weekAgo = Date.now() - 7 * 864e5;
+  $('#stats').innerHTML = [
+    [open.length, 'Open leads'],
+    [LEADS.filter((l) => new Date(l.createdAt) > weekAgo).length, 'New this week'],
+    [due.length, 'Follow-ups due'],
+    [LEADS.filter((l) => l.status === 'Won').length, 'Won'],
+    [LEADS.length ? Math.round(100 * LEADS.filter((l) => l.status === 'Won').length / LEADS.length) + '%' : '–', 'Win rate'],
+  ].map(([n, l]) => `<div class="card"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+
+  const fuRow = ({ l, f }) => `<tr class="click" data-open="${l.id}">
+      <td><b>${esc(l.name)}</b><div class="muted">${esc(f.note || (f.action === 'call' ? 'Call' : 'Follow up'))}</div></td>
+      <td>${pill(l.status)}</td>
+      <td class="${dueClass(f.dueAt)}">${fmt(f.dueAt)}</td>
+      <td style="white-space:nowrap">${l.phone ? `<a class="btn small" target="_blank" href="${waLink(l.phone, f.clientMessage)}" onclick="event.stopPropagation()">WhatsApp</a> <a class="btn small" href="tel:+${l.phone}" onclick="event.stopPropagation()">Call</a>` : ''}
+        <button class="btn small" data-done="${l.id}:${f.id}">Done</button></td></tr>`;
+  $('#due').innerHTML = due.length ? `<table>${due.map(fuRow).join('')}</table>` : '<div class="empty">Nothing due. Nice.</div>';
+  $('#upcoming').innerHTML = soon.length ? `<table>${soon.map(fuRow).join('')}</table>` : '<div class="empty">No follow-ups scheduled.</div>';
+  $('#bySource').innerHTML = META.sources.map((s) => {
+    const ls = LEADS.filter((l) => l.source === s);
+    return `<div class="card"><div class="n">${ls.length}</div><div class="l">${esc(s)} · ${ls.filter((l) => l.status === 'Won').length} won</div></div>`;
+  }).join('');
+}
+
+function renderLeads() {
+  const q = $('#q').value.toLowerCase(), st = $('#fStatus').value, so = $('#fSource').value;
+  const rows = LEADS.filter((l) => (!st || l.status === st) && (!so || l.source === so) &&
+    (!q || [l.name, l.phone, l.email, l.referredBy, l.interest, ...l.history.map((h) => h.text)].join(' ').toLowerCase().includes(q)));
+  $('#leadRows').innerHTML = rows.length ? rows.map((l) => {
+    const n = nextFollowUp(l);
+    return `<tr class="click" data-open="${l.id}">
+      <td><b>${esc(l.name)}</b><div class="muted">${l.phone ? '+' + esc(l.phone) : ''}</div></td>
+      <td>${pill(l.status)}</td>
+      <td class="hide-sm">${esc(l.source)}${l.referredBy ? `<div class="muted">via ${esc(l.referredBy)}</div>` : ''}</td>
+      <td class="${n ? dueClass(n.dueAt) : 'muted'}">${n ? fmt(n.dueAt) : 'None'}</td>
+      <td class="hide-sm muted">${fmt(l.updatedAt)}</td></tr>`;
+  }).join('') : '<tr><td colspan="5" class="empty">No leads yet. Add one, or connect WhatsApp and Google Ads.</td></tr>';
+}
+
+function renderMessages() {
+  $('#msgNote').textContent = META.liveSending
+    ? 'Live: messages are sent from your WhatsApp Business number.'
+    : 'Test mode: reminders and client texts are recorded here but nothing is sent to anyone.';
+  $('#msgRows').innerHTML = OUTBOX.length ? OUTBOX.map((m) => `<tr>
+    <td class="muted" style="white-space:nowrap">${fmt(m.at)}</td>
+    <td>${m.kind === 'reminder' ? 'Reminder to you' : 'Text to client'}<div class="muted">${esc(m.leadName)}</div></td>
+    <td>${m.to ? '+' + esc(m.to) : '–'}</td>
+    <td>${esc(m.text)}</td>
+    <td class="${m.status === 'failed' ? 'overdue' : ''}">${esc(m.detail)}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="empty">No messages yet. They appear here when a follow-up comes due.</td></tr>';
+}
+
+function renderDetail() {
+  const l = LEADS.find((x) => x.id === openId);
+  if (!l) return $('#leadDlg').close();
+  const fus = [...l.followUps].sort((a, b) => Number(a.done) - Number(b.done) || a.dueAt.localeCompare(b.dueAt));
+  const defaultDue = new Date(Date.now() + 864e5); defaultDue.setHours(10, 0, 0, 0);
+  const localDue = new Date(defaultDue - defaultDue.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
+  $('#leadBody').innerHTML = `
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div><h3>${esc(l.name)}</h3><div class="muted">${l.phone ? '+' + esc(l.phone) : 'No phone'} · ${esc(l.source)}${l.referredBy ? ' via ' + esc(l.referredBy) : ''}${l.campaign ? ' · campaign ' + esc(l.campaign) : ''}</div></div>
+      <button class="btn small" id="closeDlg">Close</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label class="muted">Status <select id="dStatus">${META.statuses.map((s) => `<option ${s === l.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+      ${l.phone ? `<a class="btn" target="_blank" href="${waLink(l.phone)}">Open WhatsApp</a><a class="btn" href="tel:+${l.phone}">Call</a>` : ''}
+    </div>
+    <div class="tabs">
+      ${[['followups', 'Follow-ups'], ['history', 'History'], ['details', 'Details']].map(([k, t]) => `<button data-tab="${k}" class="${detailTab === k ? 'on' : ''}">${t}</button>`).join('')}
+    </div>
+
+    <div class="${detailTab === 'followups' ? '' : 'hide'}">
+      ${fus.length ? fus.map((f) => `<div class="fu ${f.done ? 'isdone' : ''}">
+        <div class="row" style="justify-content:space-between">
+          <span><b>${f.action === 'call' ? 'Call' : 'Follow up'}</b> · <span class="${f.done ? '' : dueClass(f.dueAt)}">${fmt(f.dueAt)}</span>${f.done ? ' · done' : f.firedAt ? ' · reminder sent' : ''}</span>
+          ${f.done ? '' : `<span class="row"><button class="btn small" data-snooze="${f.id}">Snooze 1 day</button><button class="btn small" data-done="${l.id}:${f.id}">Done</button><button class="btn small" data-cancel="${f.id}">Cancel</button></span>`}
+        </div>
+        ${f.note ? `<div>${esc(f.note)}</div>` : ''}
+        ${f.clientMessage ? `<div class="muted">Text to client: "${esc(f.clientMessage)}"</div>` : ''}
+      </div>`).join('') : '<div class="empty">No follow-ups yet.</div>'}
+      <form id="fuForm" class="stack" style="margin-top:10px;border-top:1px solid var(--line);padding-top:12px">
+        <b>Schedule a follow-up</b>
+        <div class="grid2">
+          <label>When<input type="datetime-local" name="dueAt" value="${localDue}" required></label>
+          <label>What<select name="action"><option value="followup">Follow up</option><option value="call">Call</option></select></label>
+        </div>
+        <label>Reminder note to you<input name="note" placeholder="e.g. Ask about budget"></label>
+        <label><span class="row"><input type="checkbox" id="sendClient" ${l.phone ? 'checked' : 'disabled'}> Also send the client a WhatsApp follow-up text</span></label>
+        <div id="clientMsgBox" class="${l.phone ? '' : 'hide'}">
+          <div class="row" style="margin-bottom:6px">${TEMPLATES.map(([t], i) => `<button type="button" class="btn small" data-tpl="${i}">${t}</button>`).join('')}</div>
+          <textarea name="clientMessage">${esc(fill(TEMPLATES[0][1], l))}</textarea>
+        </div>
+        <div><button class="btn primary">Schedule</button></div>
+      </form>
+    </div>
+
+    <div class="${detailTab === 'history' ? '' : 'hide'}">
+      <form id="noteForm" class="row" style="margin-bottom:8px">
+        <input name="text" placeholder="Add a note or call outcome" style="flex:1">
+        <select name="type"><option value="note">Note</option><option value="call">Call log</option></select>
+        <button class="btn">Add</button>
+      </form>
+      <ul class="hist">${l.history.map((h) => `<li><div class="t">${fmt(h.at)} · ${esc(h.type)}</div>${esc(h.text.replace(/\d{4}-\d\d-\d\dT[\d:.]+Z/g, fmt))}</li>`).join('')}</ul>
+    </div>
+
+    <div class="${detailTab === 'details' ? '' : 'hide'}">
+      <form id="editForm" class="stack">
+        <div class="grid2">
+          <label>Name<input name="name" value="${esc(l.name)}"></label>
+          <label>Phone<input name="phone" value="${esc(l.phone)}"></label>
+          <label>Source<select name="source">${META.sources.map((s) => `<option ${s === l.source ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+          <label>Referred by<input name="referredBy" value="${esc(l.referredBy)}"></label>
+          <label>Email<input name="email" value="${esc(l.email)}"></label>
+          <label>Interested in<input name="interest" value="${esc(l.interest)}"></label>
+        </div>
+        <div class="row" style="justify-content:space-between"><button class="btn primary">Save details</button><button type="button" class="btn" id="delLead" style="color:var(--bad)">Delete lead</button></div>
+      </form>
+    </div>`;
+}
+
+function render() {
+  renderToday(); renderLeads(); renderMessages();
+  if (openId && $('#leadDlg').open) renderDetail();
+}
+
+async function refresh() {
+  [LEADS, OUTBOX] = await Promise.all([api('/api/leads'), api('/api/outbox')]);
+  render();
+  notifyDue();
+}
+
+// Browser notifications as a backup reminder while the CRM is open.
+const notified = new Set();
+function notifyDue() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  for (const l of LEADS) for (const f of l.followUps) {
+    if (!f.done && new Date(f.dueAt) <= new Date() && !notified.has(f.id)) {
+      notified.add(f.id);
+      new Notification(`${f.action === 'call' ? 'Call' : 'Follow up with'} ${l.name}`, { body: f.note || l.status });
+    }
+  }
+}
+
+// ---------- events ----------
+document.addEventListener('click', async (e) => {
+  const t = e.target;
+  if (t.dataset.view) {
+    document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b === t));
+    ['today', 'leads', 'messages'].forEach((v) => $('#view-' + v).classList.toggle('hide', v !== t.dataset.view));
+    return;
+  }
+  if (t.dataset.done) {
+    e.stopPropagation();
+    const [lid, fid] = t.dataset.done.split(':');
+    const outcome = prompt('How did it go? (optional)') ?? null;
+    if (outcome === null) return;
+    await api(`/api/leads/${lid}/followups/${fid}`, { method: 'PATCH', body: { done: true, outcome } });
+    return refresh();
+  }
+  const row = t.closest('[data-open]');
+  if (row) { openId = row.dataset.open; detailTab = 'followups'; renderDetail(); $('#leadDlg').showModal(); return; }
+  if (t.id === 'closeDlg') return $('#leadDlg').close();
+  if (t.dataset.tab) { detailTab = t.dataset.tab; return renderDetail(); }
+  if (t.dataset.tpl) { $('#fuForm [name=clientMessage]').value = fill(TEMPLATES[t.dataset.tpl][1], LEADS.find((l) => l.id === openId)); return; }
+  if (t.dataset.snooze) { await api(`/api/leads/${openId}/followups/${t.dataset.snooze}`, { method: 'PATCH', body: { snoozeMinutes: 1440 } }); return refresh(); }
+  if (t.dataset.cancel) { await api(`/api/leads/${openId}/followups/${t.dataset.cancel}`, { method: 'DELETE' }); return refresh(); }
+  if (t.id === 'delLead' && confirm('Delete this lead and its history?')) { await api(`/api/leads/${openId}`, { method: 'DELETE' }); $('#leadDlg').close(); return refresh(); }
+  if (t.id === 'addBtn') { $('#addForm').reset(); $('#addDlg').showModal(); if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); }
+});
+
+document.addEventListener('change', async (e) => {
+  if (e.target.id === 'dStatus') { await api(`/api/leads/${openId}`, { method: 'PATCH', body: { status: e.target.value } }); refresh(); }
+  if (e.target.id === 'sendClient') $('#clientMsgBox').classList.toggle('hide', !e.target.checked);
+});
+
+document.addEventListener('submit', async (e) => {
+  const f = e.target, data = Object.fromEntries(new FormData(f));
+  try {
+    if (f.id === 'addForm') {
+      if (e.submitter?.value !== 'ok') return;
+      e.preventDefault();
+      const lead = await api('/api/leads', { method: 'POST', body: data });
+      $('#addDlg').close();
+      await refresh();
+      openId = lead.id; detailTab = 'followups'; renderDetail(); $('#leadDlg').showModal();
+    } else if (f.id === 'fuForm') {
+      e.preventDefault();
+      if (!$('#sendClient').checked) data.clientMessage = '';
+      await api(`/api/leads/${openId}/followups`, { method: 'POST', body: { ...data, dueAt: new Date(data.dueAt).toISOString() } });
+      refresh();
+    } else if (f.id === 'noteForm') {
+      e.preventDefault();
+      await api(`/api/leads/${openId}/notes`, { method: 'POST', body: data });
+      refresh();
+    } else if (f.id === 'editForm') {
+      e.preventDefault();
+      await api(`/api/leads/${openId}`, { method: 'PATCH', body: data });
+      refresh();
+    }
+  } catch (err) { e.preventDefault(); alert(err.message); }
+});
+
+['q', 'fStatus', 'fSource'].forEach((id) => $('#' + id).addEventListener('input', renderLeads));
+
+(async () => {
+  META = await api('/api/meta');
+  $('#fStatus').innerHTML += META.statuses.map((s) => `<option>${s}</option>`).join('');
+  $('#fSource').innerHTML += META.sources.map((s) => `<option>${s}</option>`).join('');
+  $('#addSource').innerHTML = META.sources.map((s) => `<option ${s === 'Referral' ? 'selected' : ''}>${s}</option>`).join('');
+  if (META.liveSending) { $('#mode').textContent = 'WhatsApp live'; $('#mode').classList.add('live'); }
+  await refresh();
+  setInterval(refresh, 30000);
+})();
+</script>
+</body>
+</html>
