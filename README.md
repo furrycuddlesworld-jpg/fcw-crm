@@ -43,12 +43,15 @@ Nothing is sent to anyone until `WHATSAPP_SEND=on` is set together with the API 
 | `WHATSAPP_VERIFY_TOKEN` | Any secret you choose, entered in Meta when setting up the webhook (default `fcw-verify`; change it) |
 | `GOOGLE_ADS_KEY` | The key you enter on the Google Ads lead form webhook (default `fcw-google-key`; change it) |
 | `GOOGLE_CAMPAIGN_NAMES` | Names for Google Ads campaign IDs, e.g. `21234567890=Diwali Sale; 21234567891=Kids Gifts` |
+| `FORM_KEY` | Key for your landing page form (`/webhooks/form`). It sits in the page's code, so it only keeps out casual spam. See [LANDING-PAGE.md](LANDING-PAGE.md). |
+| `FORM_THANKS_URL` | Optional thank-you page for forms that post straight to the CRM |
 | `NEW_LEAD_FOLLOWUP_MINUTES` | Minutes after a new WhatsApp or ad lead arrives that its "reply or call" reminder comes due (default 60, 0 turns it off) |
 
 ## Connecting the sources
 
 - **WhatsApp:** in Meta for Developers, set the webhook URL to `https://<your-domain>/webhooks/whatsapp` with your verify token and subscribe to `messages`.
 - **Google Ads:** see [GOOGLE-ADS.md](GOOGLE-ADS.md). In short: on the lead form asset, under "Lead delivery", add the webhook URL `https://<your-domain>/webhooks/google-ads` and your key, then press "Send test data".
+- **Landing page form (Google or Meta ads):** see [LANDING-PAGE.md](LANDING-PAGE.md). Add one line of script to the page, or point the form builder's webhook at `https://<your-domain>/webhooks/form?key=<FORM_KEY>`.
 - **Meta click-to-WhatsApp ads:** see [META-ADS.md](META-ADS.md).
 - **Referrals:** add them by hand with source "Referral" and the referrer's name.
 
@@ -63,7 +66,7 @@ Both webhooks need the app to be on the internet over HTTPS (a small hosting ser
 
 `render.yaml` uses Render's Starter plan with a 1 GB disk at `/var/data`, so leads survive restarts and the reminder timer keeps running. The free plan cannot keep data: it wipes files on every restart and sleeps when idle, which stops reminders.
 
-`/healthz` is an open health check. Everything except `/healthz` and the `/webhooks/...` addresses needs the password.
+`/healthz` is an open health check. Everything except `/healthz`, `/form.js` and the `/webhooks/...` addresses needs the password.
 
 ## Things to know before going live
 

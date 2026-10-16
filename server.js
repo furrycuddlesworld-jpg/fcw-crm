@@ -26,6 +26,10 @@ const config = {
   interaktSecret: process.env.INTERAKT_SECRET || '',
   publicUrl: process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '',
   googleAdsKey: process.env.GOOGLE_ADS_KEY || 'fcw-google-key',
+  // Optional key the landing page sends with each form (a spam filter, not a secret: it's visible in the page).
+  formKey: process.env.FORM_KEY || '',
+  // Where a plain HTML form is sent after submitting, e.g. your thank-you page.
+  formThanksUrl: process.env.FORM_THANKS_URL || '',
   // Friendly names for Google Ads campaign IDs, e.g. "21234567890=Diwali Sale; 21234567891=Kids Gifts".
   googleCampaignNames: Object.fromEntries((process.env.GOOGLE_CAMPAIGN_NAMES || '').split(/[;,\n]/)
     .map((pair) => pair.split(/[=:]/).map((x) => x.trim())).filter(([k, v]) => k && v)),
@@ -36,7 +40,7 @@ const config = {
 };
 
 const STATUSES = ['New', 'Contacted', 'Interested', 'Follow-up', 'Proposal sent', 'Won', 'Lost'];
-const SOURCES = ['WhatsApp', 'Meta Ads', 'Google Ads', 'Referral', 'Walk-in', 'Other'];
+const SOURCES = ['WhatsApp', 'Meta Ads', 'Google Ads', 'Website', 'Referral', 'Walk-in', 'Other'];
 
 // ---------- storage ----------
 function load() {
@@ -130,6 +134,88 @@ function recordInbound(phone, name, text, ad) {
   return isNew;
 }
 
+// ---------- landing page forms ----------
+// Form builders name fields differently; flatten the payload and match common names.
+function flattenForm(body) {
+  const out = {};
+  const put = (k, v) => {
+    if (v == null || typeof v === 'object') return;
+    // Bracketed names like fields[phone][value] or form_fields[email] use the inner name.
+    const inner = String(k).match(/\[([^[\]]+)\](?:\[(?:value|raw_value)\])?$/);
+    if (inner && !/^(value|raw_value)$/.test(inner[1])) k = inner[1];
+    const key = String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (key && !(key in out)) out[key] = { label: String(k), value: String(v).trim() };
+  };
+  const walk = (obj, depth) => {
+    if (Array.isArray(obj)) {
+      for (const item of obj) if (item && typeof item === 'object') {
+        const k = item.name ?? item.label ?? item.title ?? item.key ?? item.id;
+        if (k != null && 'value' in item) put(k, Array.isArray(item.value) ? item.value.join(', ') : item.value);
+        else if (depth < 3) walk(item, depth + 1);
+      }
+      return;
+    }
+    for (const [k, v] of Object.entries(obj || {})) {
+      if (v && typeof v === 'object') { if (depth < 3) walk(v, depth + 1); } else put(k, v);
+    }
+  };
+  walk(body, 0);
+  return out;
+}
+
+const FORM_FIELDS = {
+  name: ['name', 'fullname', 'yourname', 'customername', 'contactname'],
+  firstName: ['firstname', 'fname'],
+  lastName: ['lastname', 'lname', 'surname'],
+  phone: ['phone', 'phonenumber', 'mobile', 'mobilenumber', 'tel', 'telephone', 'whatsapp', 'whatsappnumber', 'contactnumber', 'yourphone', 'number', 'contact'],
+  email: ['email', 'emailaddress', 'youremail', 'mail'],
+  tracking: ['gclid', 'gbraid', 'wbraid', 'fbclid', 'utmsource', 'utmmedium', 'utmcampaign', 'utmcontent', 'utmterm', 'pageurl', 'landingpage', 'formkey', 'fcwhp', 'redirect', 'ts'],
+};
+
+const formHits = new Map();
+function formRateLimited(req) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  const t = Date.now(), recent = (formHits.get(ip) || []).filter((x) => t - x < 10 * 60000);
+  recent.push(t);
+  formHits.set(ip, recent);
+  return recent.length > 10;
+}
+
+function leadFromForm(body, referer) {
+  const f = flattenForm(body);
+  const get = (names) => names.map((n) => f[n]?.value).find(Boolean) || '';
+  // Ad details can come as fields, or inside the page address the form was on.
+  const params = new URLSearchParams();
+  for (const u of [get(['landingpage']), get(['pageurl']), referer]) {
+    try { for (const [k, v] of new URL(u).searchParams) if (!params.has(k)) params.set(k, v); } catch {}
+  }
+  const tr = (k) => get([k.replace(/_/g, '')]) || params.get(k) || '';
+  const utmSource = tr('utm_source').toLowerCase();
+  const gclid = tr('gclid') || tr('gbraid') || tr('wbraid');
+  const fbclid = tr('fbclid');
+  const source = gclid || /google|adwords/.test(utmSource) ? 'Google Ads'
+    : fbclid || /facebook|^fb$|instagram|^ig$|meta/.test(utmSource) ? 'Meta Ads' : 'Website';
+  let campaign = tr('utm_campaign');
+  if (source === 'Google Ads' && config.googleCampaignNames[campaign]) campaign = config.googleCampaignNames[campaign];
+  const used = new Set([...FORM_FIELDS.name, ...FORM_FIELDS.firstName, ...FORM_FIELDS.lastName, ...FORM_FIELDS.phone, ...FORM_FIELDS.email, ...FORM_FIELDS.tracking]);
+  const answers = Object.entries(f).filter(([k, v]) => !used.has(k) && v.value && !/pass|card|cvv|token|nonce|captcha|recaptcha/.test(k))
+    .map(([, v]) => `${v.label}: ${v.value.slice(0, 500)}`);
+  return {
+    name: get(FORM_FIELDS.name) || [get(FORM_FIELDS.firstName), get(FORM_FIELDS.lastName)].filter(Boolean).join(' '),
+    phone: get(FORM_FIELDS.phone),
+    email: get(FORM_FIELDS.email),
+    source,
+    campaign: campaign || (source === 'Website' && utmSource ? utmSource : ''),
+    gclid,
+    adId: tr('utm_content'),
+    notes: answers.length ? 'Form answers: ' + answers.join('; ') : '',
+    page: get(['pageurl']) || get(['landingpage']) || referer || '',
+    honeypot: get(['fcwhp']),
+    key: get(['formkey']),
+    redirect: get(['redirect']),
+  };
+}
+
 // ---------- WhatsApp sending ----------
 async function sendWhatsApp(to, text) {
   if (!config.waSend || !config.waToken || !config.waPhoneNumberId) {
@@ -198,6 +284,7 @@ function readBody(req) {
     req.on('data', (c) => { raw += c; if (raw.length > 1e6) req.destroy(); });
     req.on('end', () => {
       req.rawBody = raw;
+      if (/x-www-form-urlencoded/.test(req.headers['content-type'] || '')) return resolve(Object.fromEntries(new URLSearchParams(raw)));
       try { resolve(raw ? JSON.parse(raw) : {}); } catch { resolve({}); }
     });
   });
@@ -242,7 +329,7 @@ async function handle(req, res) {
   let r;
 
   if (p === '/healthz') return send(res, 200, { ok: true });
-  if (!p.startsWith('/webhooks/') && !authorized(req)) {
+  if (!p.startsWith('/webhooks/') && p !== '/form.js' && !authorized(req)) {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="FCW CRM", charset="UTF-8"' });
     return res.end('Password required');
   }
@@ -417,6 +504,38 @@ async function handle(req, res) {
       save();
     }
     return send(res, 200, { ok: true, created });
+  }
+
+  // ---- Landing page form (any website form builder, or the /form.js snippet) ----
+  if (p === '/webhooks/form') {
+    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
+    if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
+    if (req.method !== 'POST') return send(res, 405, { error: 'Use POST' });
+    const reply = (code, data) => { res.writeHead(code, { ...cors, 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+    const body = await readBody(req);
+    const lead = leadFromForm(body, req.headers.referer || '');
+    if (config.formKey && !safeEqual(lead.key || url.searchParams.get('key') || '', config.formKey)) return reply(403, { error: 'Bad form key' });
+    if (lead.honeypot) return reply(200, { ok: true }); // a bot filled the hidden field
+    if (formRateLimited(req)) return reply(429, { error: 'Too many submissions, try again later' });
+    if (!lead.phone && !lead.email) return reply(400, { error: 'A phone number or email is needed' });
+    const existing = lead.phone ? findByPhone(lead.phone) : db.leads.find((l) => l.email && l.email.toLowerCase() === lead.email.toLowerCase());
+    const where = `${lead.source === 'Website' ? 'the website form' : `a ${lead.source} landing page`}${lead.campaign ? ` ("${lead.campaign}")` : ''}`;
+    if (existing) {
+      log(existing, 'inbound', `Filled ${where} again${lead.notes ? '. ' + lead.notes : ''}`);
+      existing.followUps.some((x) => !x.done) || addFirstFollowUp(existing);
+    } else {
+      const created = createLead(lead, `from ${where}`);
+      if (lead.page) log(created, 'inbound', `Page: ${lead.page.slice(0, 300)}`);
+      addFirstFollowUp(created);
+    }
+    save();
+    const thanks = lead.redirect || config.formThanksUrl;
+    // Only a browser posting a plain HTML form is sent on to the thank-you page; webhooks get JSON.
+    if (thanks && /text\/html/.test(req.headers.accept || '') && /^https?:\/\//.test(thanks)) {
+      res.writeHead(303, { Location: thanks });
+      return res.end();
+    }
+    return reply(200, { ok: true });
   }
 
   // ---- Google Ads lead form webhook ----

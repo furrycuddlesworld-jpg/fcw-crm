@@ -25,6 +25,10 @@ services:
         generateValue: true
       - key: GOOGLE_ADS_KEY
         generateValue: true
+      - key: FORM_KEY
+        generateValue: true
+      - key: FORM_THANKS_URL
+        sync: false
       - key: WHATSAPP_APP_SECRET
         sync: false
       - key: WHATSAPP_WEBHOOK_KEY
