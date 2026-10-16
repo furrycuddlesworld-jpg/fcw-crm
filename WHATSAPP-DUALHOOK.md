@@ -2,7 +2,16 @@
 
 Dualhook connects your number in "coexistence" mode, so it stays on the WhatsApp Business app, and asks Meta to send every WhatsApp event straight to the CRM. Messages don't pass through Dualhook, and they arrive in Meta's own format. That means ad tagging and "you replied" tracking work automatically.
 
-## Before you start
+## Using a separate number for ads
+
+This guide works for a new number just for your ads, which keeps your personal number untouched.
+
+1. Get a new SIM (or a number that can receive an SMS or call) that has never been on WhatsApp.
+2. Put it in a second phone (or a dual-SIM phone) and set up the **WhatsApp Business app** with that number. Add your FCW name, logo and business hours.
+3. Use it for a few days first. Meta only allows coexistence for numbers that have been active on the app for a while (about 7 days).
+4. Change your Meta ads' WhatsApp button to the new number. The ad chats arrive there from then on.
+5. Then follow the steps below to connect it.
+
 
 - Update the **WhatsApp Business app** to the latest version. Your number should have been in use on it for a while (Meta asks for about 7 days).
 - Have your phone handy, and access to your FCW business portfolio on Facebook.
