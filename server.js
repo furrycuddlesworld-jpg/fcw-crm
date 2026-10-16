@@ -20,6 +20,9 @@ const config = {
   // For partners (like 360dialog) that forward WhatsApp webhooks without Meta's signature:
   // give them the webhook URL ending in ?key=<this value>.
   waWebhookKey: process.env.WHATSAPP_WEBHOOK_KEY || '',
+  // 360dialog API key for your number; lets the CRM point 360dialog's webhook at itself.
+  d360ApiKey: process.env.D360_API_KEY || '',
+  publicUrl: process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '',
   googleAdsKey: process.env.GOOGLE_ADS_KEY || 'fcw-google-key',
   // Password for opening the CRM (username can be anything). Webhooks stay open so WhatsApp and Google can reach them.
   appPassword: process.env.APP_PASSWORD || '',
@@ -226,6 +229,7 @@ async function handle(req, res) {
       sources: SOURCES,
       liveSending: config.waSend && !!config.waToken && !!config.waPhoneNumberId,
       ownerPhoneSet: !!config.ownerPhone,
+      d360Ready: !!(config.d360ApiKey && config.waWebhookKey && config.publicUrl),
     });
   }
 
@@ -318,6 +322,25 @@ async function handle(req, res) {
     }
     save();
     return send(res, 200, lead);
+  }
+
+  // Tell 360dialog to deliver this number's WhatsApp messages to the CRM.
+  if (p === '/api/whatsapp/connect-360dialog' && req.method === 'POST') {
+    if (!config.d360ApiKey) return send(res, 400, { error: 'Add D360_API_KEY in Render first' });
+    if (!config.waWebhookKey || !config.publicUrl) return send(res, 400, { error: 'WHATSAPP_WEBHOOK_KEY or the app address is missing' });
+    const hook = `${config.publicUrl.replace(/\/$/, '')}/webhooks/whatsapp?key=${encodeURIComponent(config.waWebhookKey)}`;
+    try {
+      const r2 = await fetch('https://waba-v2.360dialog.io/v1/configs/webhook', {
+        method: 'POST',
+        headers: { 'D360-API-KEY': config.d360ApiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: hook }),
+      });
+      const out = await r2.json().catch(() => ({}));
+      if (!r2.ok) return send(res, 502, { error: `360dialog said: ${out.meta?.developer_message || out.error?.message || 'HTTP ' + r2.status}` });
+      return send(res, 200, { ok: true });
+    } catch (e) {
+      return send(res, 502, { error: `Could not reach 360dialog: ${e.message}` });
+    }
   }
 
   if (p === '/api/outbox' && req.method === 'GET') return send(res, 200, db.outbox.slice(0, 300));

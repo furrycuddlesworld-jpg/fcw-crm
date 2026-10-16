@@ -115,6 +115,7 @@
     <section>
       <h2>WhatsApp messages</h2>
       <p class="muted" id="msgNote"></p>
+      <p id="d360Box" class="hide"><button class="btn" id="d360Btn">Connect WhatsApp (360dialog)</button> <span class="muted" id="d360Msg">Sends your WhatsApp chats to this CRM.</span></p>
       <table>
         <thead><tr><th>When</th><th>Type</th><th>To</th><th>Message</th><th>Result</th></tr></thead>
         <tbody id="msgRows"></tbody>
@@ -362,6 +363,12 @@ document.addEventListener('click', async (e) => {
   const row = t.closest('[data-open]');
   if (row) { openId = row.dataset.open; detailTab = 'followups'; renderDetail(); $('#leadDlg').showModal(); return; }
   if (t.id === 'closeDlg') return $('#leadDlg').close();
+  if (t.id === 'd360Btn') {
+    $('#d360Msg').textContent = 'Connecting...';
+    try { await api('/api/whatsapp/connect-360dialog', { method: 'POST' }); $('#d360Msg').textContent = 'Connected. New WhatsApp chats will now appear as leads.'; }
+    catch (err) { $('#d360Msg').textContent = err.message; }
+    return;
+  }
   if (t.dataset.tab) { detailTab = t.dataset.tab; return renderDetail(); }
   if (t.dataset.tpl) { $('#fuForm [name=clientMessage]').value = fill(TEMPLATES[t.dataset.tpl][1], LEADS.find((l) => l.id === openId)); return; }
   if (t.dataset.snooze) { await api(`/api/leads/${openId}/followups/${t.dataset.snooze}`, { method: 'PATCH', body: { snoozeMinutes: 1440 } }); return refresh(); }
@@ -409,6 +416,7 @@ document.addEventListener('submit', async (e) => {
   $('#fStatus').innerHTML += META.statuses.map((s) => `<option>${s}</option>`).join('');
   $('#fSource').innerHTML += META.sources.map((s) => `<option>${s}</option>`).join('');
   $('#addSource').innerHTML = META.sources.map((s) => `<option ${s === 'Referral' ? 'selected' : ''}>${s}</option>`).join('');
+  if (META.d360Ready) $('#d360Box').classList.remove('hide');
   if (META.liveSending) { $('#mode').textContent = 'WhatsApp live'; $('#mode').classList.add('live'); }
   await refresh();
   setInterval(refresh, 30000);
