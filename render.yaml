@@ -27,6 +27,8 @@ services:
         generateValue: true
       - key: WHATSAPP_APP_SECRET
         sync: false
+      - key: WHATSAPP_WEBHOOK_KEY
+        generateValue: true
       - key: WHATSAPP_TOKEN
         sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID

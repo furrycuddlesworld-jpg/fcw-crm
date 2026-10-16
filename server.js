@@ -17,6 +17,9 @@ const config = {
   waVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN || 'fcw-verify',
   // Meta app secret: when set, incoming WhatsApp webhooks must carry a valid signature.
   waAppSecret: process.env.WHATSAPP_APP_SECRET || '',
+  // For partners (like 360dialog) that forward WhatsApp webhooks without Meta's signature:
+  // give them the webhook URL ending in ?key=<this value>.
+  waWebhookKey: process.env.WHATSAPP_WEBHOOK_KEY || '',
   googleAdsKey: process.env.GOOGLE_ADS_KEY || 'fcw-google-key',
   // Password for opening the CRM (username can be anything). Webhooks stay open so WhatsApp and Google can reach them.
   appPassword: process.env.APP_PASSWORD || '',
@@ -173,6 +176,19 @@ function readBody(req) {
   });
 }
 // Meta signs each webhook with the app secret (X-Hub-Signature-256: sha256=<hex>).
+function safeEqual(a, b) {
+  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+// A WhatsApp webhook is accepted when it carries Meta's signature or the partner key.
+// With neither configured, the endpoint stays open (local testing only).
+function whatsappWebhookAllowed(req, url) {
+  if (!config.waAppSecret && !config.waWebhookKey) return true;
+  if (config.waAppSecret && req.headers['x-hub-signature-256'] && validMetaSignature(req)) return true;
+  return !!config.waWebhookKey && safeEqual(url.searchParams.get('key') || '', config.waWebhookKey);
+}
+
 function validMetaSignature(req) {
   if (!config.waAppSecret) return true;
   const given = Buffer.from(String(req.headers['x-hub-signature-256'] || ''));
@@ -313,12 +329,22 @@ async function handle(req, res) {
   }
   if (p === '/webhooks/whatsapp' && req.method === 'POST') {
     const body = await readBody(req);
-    if (!validMetaSignature(req)) return send(res, 401, { error: 'Bad signature' });
+    if (!whatsappWebhookAllowed(req, url)) return send(res, 401, { error: 'Bad signature' });
     let created = 0;
     for (const entry of body.entry || []) {
       for (const change of entry.changes || []) {
         const v = change.value || {};
         const names = Object.fromEntries((v.contacts || []).map((c) => [c.wa_id, c.profile?.name]));
+        // Messages you send from the WhatsApp Business app (coexistence) arrive as echoes.
+        for (const echo of v.message_echoes || []) {
+          const lead = findByPhone(echo.to);
+          if (!lead) continue;
+          log(lead, 'outbound', `You (WhatsApp app): "${echo.text?.body || `[${echo.type} message]`}"`);
+          if (lead.status === 'New') {
+            log(lead, 'status', 'Status changed from New to Contacted (you replied on WhatsApp)');
+            lead.status = 'Contacted';
+          }
+        }
         for (const msg of v.messages || []) {
           const text = msg.text?.body || `[${msg.type} message]`;
           const ad = adFromMessage(msg);
