@@ -156,7 +156,9 @@ function flattenForm(body) {
       return;
     }
     for (const [k, v] of Object.entries(obj || {})) {
-      if (v && typeof v === 'object') { if (depth < 3) walk(v, depth + 1); } else put(k, v);
+      // Elementor's "advanced data" sends fields[id] = { title, value, ... }.
+      if (v && typeof v === 'object' && !Array.isArray(v) && 'value' in v && typeof v.value !== 'object') put(v.title || v.label || k, v.value);
+      else if (v && typeof v === 'object') { if (depth < 3) walk(v, depth + 1); } else put(k, v);
     }
   };
   walk(body, 0);
@@ -169,6 +171,8 @@ const FORM_FIELDS = {
   lastName: ['lastname', 'lname', 'surname'],
   phone: ['phone', 'phonenumber', 'mobile', 'mobilenumber', 'tel', 'telephone', 'whatsapp', 'whatsappnumber', 'contactnumber', 'yourphone', 'number', 'contact'],
   email: ['email', 'emailaddress', 'youremail', 'mail'],
+  // Builders' own housekeeping fields (Elementor, WordPress), not answers.
+  ignore: ['postid', 'formid', 'formname', 'referertitle', 'queriedid', 'action', 'referer', 'referrer', 'wpnonce', 'wphttpreferer'],
   tracking: ['gclid', 'gbraid', 'wbraid', 'fbclid', 'utmsource', 'utmmedium', 'utmcampaign', 'utmcontent', 'utmterm', 'pageurl', 'landingpage', 'formkey', 'fcwhp', 'redirect', 'ts'],
 };
 
@@ -197,13 +201,24 @@ function leadFromForm(body, referer) {
     : fbclid || /facebook|^fb$|instagram|^ig$|meta/.test(utmSource) ? 'Meta Ads' : 'Website';
   let campaign = tr('utm_campaign');
   if (source === 'Google Ads' && config.googleCampaignNames[campaign]) campaign = config.googleCampaignNames[campaign];
-  const used = new Set([...FORM_FIELDS.name, ...FORM_FIELDS.firstName, ...FORM_FIELDS.lastName, ...FORM_FIELDS.phone, ...FORM_FIELDS.email, ...FORM_FIELDS.tracking]);
+  const used = new Set([...FORM_FIELDS.name, ...FORM_FIELDS.firstName, ...FORM_FIELDS.lastName, ...FORM_FIELDS.phone, ...FORM_FIELDS.email, ...FORM_FIELDS.tracking, ...FORM_FIELDS.ignore]);
+  // Fields with made-up names (Elementor's field_ab12cd): find the phone and email by their label or what was typed.
+  const guess = (named, labelRe, valueRe) => {
+    if (get(named)) return get(named);
+    const hit = Object.entries(f).find(([k, v]) => !used.has(k) && v.value && labelRe.test(k))
+      || Object.entries(f).find(([k, v]) => !used.has(k) && valueRe.test(v.value));
+    if (!hit) return '';
+    used.add(hit[0]);
+    return hit[1].value;
+  };
+  const phone = guess(FORM_FIELDS.phone, /phone|mobile|whatsapp|contactno|tel/, /^\+?[\d\s\-().]{8,20}$/);
+  const email = guess(FORM_FIELDS.email, /email/, /^[^\s@]+@[^\s@]+\.[^\s@]+$/);
   const answers = Object.entries(f).filter(([k, v]) => !used.has(k) && v.value && !/pass|card|cvv|token|nonce|captcha|recaptcha/.test(k))
     .map(([, v]) => `${v.label}: ${v.value.slice(0, 500)}`);
   return {
     name: get(FORM_FIELDS.name) || [get(FORM_FIELDS.firstName), get(FORM_FIELDS.lastName)].filter(Boolean).join(' '),
-    phone: get(FORM_FIELDS.phone),
-    email: get(FORM_FIELDS.email),
+    phone,
+    email,
     source,
     campaign: campaign || (source === 'Website' && utmSource ? utmSource : ''),
     gclid,

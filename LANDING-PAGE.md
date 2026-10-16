@@ -48,6 +48,21 @@ With option B the CRM sees only what the builder sends, so the ad details reach 
 
 Open the landing page with a test address such as `https://your-page.com/?utm_source=google&utm_campaign=test`, fill in the form with your own details, and check that a **Google Ads** lead with campaign "test" appears in the CRM. Delete it from its **Details** tab.
 
+### Elementor (WordPress)
+
+Use option A:
+
+1. In WordPress, open the landing page and click **Edit with Elementor**.
+2. Drag an **HTML** widget (search "HTML" in the widgets panel) to the bottom of the page.
+3. Paste the script line from option A, with your key, into the widget's box. It shows nothing on the page.
+4. Click **Update**. If you use a caching plugin (WP Rocket, LiteSpeed, W3 Total Cache), clear its cache.
+
+If you have Elementor Pro and want the CRM on every page, use **Elementor**, **Custom Code**, **Add New** instead, with location **</body> - End**, and set the display condition to **Entire Site**.
+
+Your form fields can keep their own names. The CRM reads the visible labels (such as "Phone Number"), so a phone field called `field_a1b2c3` still lands as the phone number.
+
+Backup: in the Form widget, **Actions After Submit**, add **Webhook** and paste the option B address. The ad details only come through this way if you add hidden fields named `gclid` and `utm_campaign` set to the dynamic tag **Request Parameter**, so the script is easier.
+
 ## Step 3: tag your Google ads
 
 1. **Keep auto-tagging on:** Google Ads, **Admin**, **Account settings**, **Auto-tagging** ticked. This adds the `gclid`.

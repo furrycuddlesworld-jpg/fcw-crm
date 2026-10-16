@@ -46,8 +46,16 @@
     if (!form || form.tagName !== 'FORM' || form.hasAttribute('data-fcw-ignore')) return;
     var data = {};
     try {
+      var labels = {};
+      for (var i = 0; i < form.elements.length; i++) {
+        var el = form.elements[i], text = el.labels && el.labels[0] ? el.labels[0].textContent : el.placeholder;
+        if (el.name && text) labels[el.name] = text.replace(/\s*\*\s*$/, '').trim();
+      }
       new FormData(form).forEach(function (v, k) {
-        if (typeof v === 'string' && !/pass|card|cvv/i.test(k)) data[k] = v;
+        if (typeof v !== 'string' || /pass|card|cvv/i.test(k)) return;
+        // Builders like Elementor name fields field_ab12cd; use the visible label instead.
+        if (/field_[a-z0-9]+\]?$/i.test(k) && labels[k]) k = labels[k];
+        if (!(k in data)) data[k] = v;
       });
     } catch (err) { return; }
     var t = tracking();
