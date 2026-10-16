@@ -26,6 +26,9 @@ const config = {
   interaktSecret: process.env.INTERAKT_SECRET || '',
   publicUrl: process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '',
   googleAdsKey: process.env.GOOGLE_ADS_KEY || 'fcw-google-key',
+  // Friendly names for Google Ads campaign IDs, e.g. "21234567890=Diwali Sale; 21234567891=Kids Gifts".
+  googleCampaignNames: Object.fromEntries((process.env.GOOGLE_CAMPAIGN_NAMES || '').split(/[;,\n]/)
+    .map((pair) => pair.split(/[=:]/).map((x) => x.trim())).filter(([k, v]) => k && v)),
   // Password for opening the CRM (username can be anything). Webhooks stay open so WhatsApp and Google can reach them.
   appPassword: process.env.APP_PASSWORD || '',
   // New leads from WhatsApp or ads get a "reply or call" reminder this many minutes later. 0 turns it off.
@@ -71,6 +74,8 @@ function createLead(input, how) {
     referredBy: (input.referredBy || '').trim(),
     campaign: (input.campaign || '').trim(),
     adId: input.adId || '',
+    googleLeadId: input.googleLeadId || '',
+    gclid: input.gclid || '',
     adUrl: input.adUrl || '',
     ctwaClid: input.ctwaClid || '',
     interest: (input.interest || '').trim(),
@@ -418,18 +423,30 @@ async function handle(req, res) {
   if (p === '/webhooks/google-ads' && req.method === 'POST') {
     const body = await readBody(req);
     if (body.google_key !== config.googleAdsKey) return send(res, 403, { error: 'Bad key' });
-    const col = (idName) => (body.user_column_data || []).find((c) => c.column_id === idName)?.string_value || '';
+    const cols = body.user_column_data || [];
+    const col = (idName) => cols.find((c) => c.column_id === idName)?.string_value || '';
+    // Google retries deliveries; the same lead_id is only recorded once.
+    if (body.lead_id && db.leads.some((l) => l.googleLeadId === String(body.lead_id))) return send(res, 200, { ok: true, duplicate: true });
+    const campaignId = String(body.campaign_id || '');
+    const campaign = config.googleCampaignNames[campaignId] || (campaignId ? `Google campaign ${campaignId}` : 'Google lead form');
+    const known = new Set(['FULL_NAME', 'FIRST_NAME', 'LAST_NAME', 'PHONE_NUMBER', 'EMAIL']);
+    const answers = cols.filter((c) => !known.has(c.column_id) && c.string_value)
+      .map((c) => `${c.column_name || c.column_id.replace(/_/g, ' ').toLowerCase()}: ${c.string_value}`);
     const input = {
       name: col('FULL_NAME') || [col('FIRST_NAME'), col('LAST_NAME')].filter(Boolean).join(' '),
       phone: col('PHONE_NUMBER'),
       email: col('EMAIL'),
       source: 'Google Ads',
-      campaign: String(body.campaign_id || ''),
-      notes: body.is_test ? 'Google Ads test lead' : '',
+      campaign,
+      googleLeadId: String(body.lead_id || ''),
+      gclid: body.gcl_id || '',
+      notes: [body.is_test ? 'Google Ads test lead' : '', answers.length ? 'Form answers: ' + answers.join('; ') : ''].filter(Boolean).join('. '),
     };
     const existing = findByPhone(input.phone);
-    if (existing) log(existing, 'inbound', `Submitted a Google Ads lead form again (campaign ${input.campaign})`);
-    else addFirstFollowUp(createLead(input, 'from a Google Ads lead form'));
+    if (existing) {
+      log(existing, 'inbound', `Submitted a Google Ads lead form again ("${campaign}")${answers.length ? '. ' + answers.join('; ') : ''}`);
+      existing.followUps.some((f) => !f.done) || addFirstFollowUp(existing);
+    } else addFirstFollowUp(createLead(input, `from a Google Ads lead form ("${campaign}")`));
     save();
     return send(res, 200, { ok: true });
   }
