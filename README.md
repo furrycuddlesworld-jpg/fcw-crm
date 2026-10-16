@@ -38,11 +38,13 @@ Nothing is sent to anyone until `WHATSAPP_SEND=on` is set together with the API 
 | `WHATSAPP_APP_SECRET` | Your Meta app's secret (App settings > Basic). When set, WhatsApp webhooks without a valid Meta signature are rejected. Set it before connecting WhatsApp. |
 | `WHATSAPP_VERIFY_TOKEN` | Any secret you choose, entered in Meta when setting up the webhook (default `fcw-verify`; change it) |
 | `GOOGLE_ADS_KEY` | The key you enter on the Google Ads lead form webhook (default `fcw-google-key`; change it) |
+| `NEW_LEAD_FOLLOWUP_MINUTES` | Minutes after a new WhatsApp or ad lead arrives that its "reply or call" reminder comes due (default 60, 0 turns it off) |
 
 ## Connecting the sources
 
 - **WhatsApp:** in Meta for Developers, set the webhook URL to `https://<your-domain>/webhooks/whatsapp` with your verify token and subscribe to `messages`.
 - **Google Ads:** on the lead form asset, under "Lead delivery", add the webhook URL `https://<your-domain>/webhooks/google-ads` and your key, then press "Send test data".
+- **Meta click-to-WhatsApp ads:** see [META-ADS.md](META-ADS.md).
 - **Referrals:** add them by hand with source "Referral" and the referrer's name.
 
 Both webhooks need the app to be on the internet over HTTPS (a small hosting service, or a tunnel while testing).

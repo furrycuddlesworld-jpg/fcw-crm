@@ -89,6 +89,11 @@
       <h2>Leads by source</h2>
       <div class="cards" id="bySource" style="margin:0"></div>
     </section>
+    <section>
+      <h2>Ads</h2>
+      <p class="muted" style="margin:-4px 0 8px">Leads from each Meta and Google ad, and how many became clients.</p>
+      <div id="byAd"></div>
+    </section>
   </div>
 
   <div id="view-leads" class="hide">
@@ -129,6 +134,7 @@
     <label>Referred by<input name="referredBy" placeholder="If a referral"></label>
     <label>Email<input name="email" type="email"></label>
     <label>Interested in<input name="interest"></label>
+    <label>Ad / campaign<input name="campaign" placeholder="If from an ad, which one"></label>
   </div>
   <div class="stack" style="margin-top:10px"><label>Notes<textarea name="notes"></textarea></label></div>
   <div class="row" style="margin-top:14px;justify-content:flex-end">
@@ -200,6 +206,17 @@ function renderToday() {
         <button class="btn small" data-done="${l.id}:${f.id}">Done</button></td></tr>`;
   $('#due').innerHTML = due.length ? `<table>${due.map(fuRow).join('')}</table>` : '<div class="empty">Nothing due. Nice.</div>';
   $('#upcoming').innerHTML = soon.length ? `<table>${soon.map(fuRow).join('')}</table>` : '<div class="empty">No follow-ups scheduled.</div>';
+  const ads = {};
+  for (const l of LEADS.filter((x) => x.campaign)) {
+    const k = l.source + '|' + l.campaign;
+    (ads[k] ||= { source: l.source, campaign: l.campaign, leads: [] }).leads.push(l);
+  }
+  const adRows = Object.values(ads).sort((a, b) => b.leads.length - a.leads.length);
+  $('#byAd').innerHTML = adRows.length ? `<table><tr><th>Ad</th><th>Source</th><th>Leads</th><th>Still open</th><th>Won</th><th>Win rate</th></tr>${adRows.map((a) => {
+    const won = a.leads.filter((l) => l.status === 'Won').length;
+    const open = a.leads.filter((l) => !['Won', 'Lost'].includes(l.status)).length;
+    return `<tr><td><b>${esc(a.campaign)}</b></td><td>${esc(a.source)}</td><td>${a.leads.length}</td><td>${open}</td><td>${won}</td><td>${Math.round(100 * won / a.leads.length)}%</td></tr>`;
+  }).join('')}</table>` : '<div class="empty">No ad leads yet. They appear here once someone messages you from a Meta ad or fills in a Google Ads form.</div>';
   $('#bySource').innerHTML = META.sources.map((s) => {
     const ls = LEADS.filter((l) => l.source === s);
     return `<div class="card"><div class="n">${ls.length}</div><div class="l">${esc(s)} · ${ls.filter((l) => l.status === 'Won').length} won</div></div>`;
@@ -242,7 +259,7 @@ function renderDetail() {
   const localDue = new Date(defaultDue - defaultDue.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
   $('#leadBody').innerHTML = `
     <div class="row" style="justify-content:space-between;align-items:flex-start">
-      <div><h3>${esc(l.name)}</h3><div class="muted">${l.phone ? '+' + esc(l.phone) : 'No phone'} · ${esc(l.source)}${l.referredBy ? ' via ' + esc(l.referredBy) : ''}${l.campaign ? ' · campaign ' + esc(l.campaign) : ''}</div></div>
+      <div><h3>${esc(l.name)}</h3><div class="muted">${l.phone ? '+' + esc(l.phone) : 'No phone'} · ${esc(l.source)}${l.referredBy ? ' via ' + esc(l.referredBy) : ''}${l.campaign ? ' · ad: ' + esc(l.campaign) : ''}${l.adUrl ? ` · <a href="${esc(l.adUrl)}" target="_blank" rel="noopener">view ad</a>` : ''}</div></div>
       <button class="btn small" id="closeDlg">Close</button>
     </div>
     <div class="row" style="margin-top:12px">
@@ -296,6 +313,7 @@ function renderDetail() {
           <label>Referred by<input name="referredBy" value="${esc(l.referredBy)}"></label>
           <label>Email<input name="email" value="${esc(l.email)}"></label>
           <label>Interested in<input name="interest" value="${esc(l.interest)}"></label>
+          <label>Ad / campaign<input name="campaign" value="${esc(l.campaign)}"></label>
         </div>
         <div class="row" style="justify-content:space-between"><button class="btn primary">Save details</button><button type="button" class="btn" id="delLead" style="color:var(--bad)">Delete lead</button></div>
       </form>

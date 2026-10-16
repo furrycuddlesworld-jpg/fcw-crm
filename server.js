@@ -20,10 +20,12 @@ const config = {
   googleAdsKey: process.env.GOOGLE_ADS_KEY || 'fcw-google-key',
   // Password for opening the CRM (username can be anything). Webhooks stay open so WhatsApp and Google can reach them.
   appPassword: process.env.APP_PASSWORD || '',
+  // New leads from WhatsApp or ads get a "reply or call" reminder this many minutes later. 0 turns it off.
+  newLeadFollowUpMinutes: Number(process.env.NEW_LEAD_FOLLOWUP_MINUTES ?? 60),
 };
 
 const STATUSES = ['New', 'Contacted', 'Interested', 'Follow-up', 'Proposal sent', 'Won', 'Lost'];
-const SOURCES = ['WhatsApp', 'Google Ads', 'Referral', 'Walk-in', 'Other'];
+const SOURCES = ['WhatsApp', 'Meta Ads', 'Google Ads', 'Referral', 'Walk-in', 'Other'];
 
 // ---------- storage ----------
 function load() {
@@ -60,6 +62,9 @@ function createLead(input, how) {
     source: SOURCES.includes(input.source) ? input.source : 'Other',
     referredBy: (input.referredBy || '').trim(),
     campaign: (input.campaign || '').trim(),
+    adId: input.adId || '',
+    adUrl: input.adUrl || '',
+    ctwaClid: input.ctwaClid || '',
     interest: (input.interest || '').trim(),
     status: STATUSES.includes(input.status) ? input.status : 'New',
     createdAt: now(),
@@ -71,6 +76,28 @@ function createLead(input, how) {
   if (input.notes) log(lead, 'note', input.notes.trim());
   db.leads.unshift(lead);
   return lead;
+}
+
+// First step of the journey: remind the owner to answer a fresh lead quickly.
+function addFirstFollowUp(lead) {
+  if (!(config.newLeadFollowUpMinutes > 0)) return;
+  const due = new Date(Date.now() + config.newLeadFollowUpMinutes * 60000);
+  lead.followUps.push({
+    id: id(), dueAt: due.toISOString(), action: 'call', note: 'New lead: reply or call',
+    clientMessage: '', createdAt: now(), firedAt: null, done: false,
+  });
+  log(lead, 'scheduled', `First follow-up set for ${due.toISOString()}`);
+}
+
+// Which Meta ad a WhatsApp chat came from. Click-to-WhatsApp ads attach a "referral" to the first
+// message; as a backup, an ad's pre-filled message can carry a code like "(Ad: DIWALI)".
+function adFromMessage(msg) {
+  const r = msg.referral;
+  if (r && (r.source_type === 'ad' || r.source_id)) {
+    return { campaign: r.headline || r.source_id || 'Meta ad', adId: r.source_id || '', adUrl: r.source_url || '', ctwaClid: r.ctwa_clid || '' };
+  }
+  const code = (msg.text?.body || '').match(/\(\s*ad\s*[:\-]\s*([^)]+)\)/i);
+  return code ? { campaign: code[1].trim() } : null;
 }
 
 // ---------- WhatsApp sending ----------
@@ -294,10 +321,16 @@ async function handle(req, res) {
         const names = Object.fromEntries((v.contacts || []).map((c) => [c.wa_id, c.profile?.name]));
         for (const msg of v.messages || []) {
           const text = msg.text?.body || `[${msg.type} message]`;
+          const ad = adFromMessage(msg);
           let lead = findByPhone(msg.from);
           if (!lead) {
-            lead = createLead({ name: names[msg.from], phone: msg.from, source: 'WhatsApp' }, 'from an incoming WhatsApp message');
+            lead = ad
+              ? createLead({ name: names[msg.from], phone: msg.from, source: 'Meta Ads', ...ad }, `from a Meta ad on WhatsApp ("${ad.campaign}")`)
+              : createLead({ name: names[msg.from], phone: msg.from, source: 'WhatsApp' }, 'from an incoming WhatsApp message');
+            addFirstFollowUp(lead);
             created++;
+          } else if (ad) {
+            log(lead, 'inbound', `Came back through Meta ad "${ad.campaign}"`);
           }
           log(lead, 'inbound', `WhatsApp: "${text}"`);
         }
@@ -322,7 +355,7 @@ async function handle(req, res) {
     };
     const existing = findByPhone(input.phone);
     if (existing) log(existing, 'inbound', `Submitted a Google Ads lead form again (campaign ${input.campaign})`);
-    else createLead(input, 'from a Google Ads lead form');
+    else addFirstFollowUp(createLead(input, 'from a Google Ads lead form'));
     save();
     return send(res, 200, { ok: true });
   }
