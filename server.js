@@ -22,6 +22,8 @@ const config = {
   waWebhookKey: process.env.WHATSAPP_WEBHOOK_KEY || '',
   // 360dialog API key for your number; lets the CRM point 360dialog's webhook at itself.
   d360ApiKey: process.env.D360_API_KEY || '',
+  // Secret key entered in Interakt's Developer Settings with the webhook URL.
+  interaktSecret: process.env.INTERAKT_SECRET || '',
   publicUrl: process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '',
   googleAdsKey: process.env.GOOGLE_ADS_KEY || 'fcw-google-key',
   // Password for opening the CRM (username can be anything). Webhooks stay open so WhatsApp and Google can reach them.
@@ -104,6 +106,23 @@ function adFromMessage(msg) {
   }
   const code = (msg.text?.body || '').match(/\(\s*ad\s*[:\-]\s*([^)]+)\)/i);
   return code ? { campaign: code[1].trim() } : null;
+}
+
+// An incoming WhatsApp message, from Meta directly or a partner. Returns true when it made a new lead.
+function recordInbound(phone, name, text, ad) {
+  let lead = findByPhone(phone);
+  let isNew = false;
+  if (!lead) {
+    lead = ad
+      ? createLead({ name, phone, source: 'Meta Ads', ...ad }, `from a Meta ad on WhatsApp ("${ad.campaign}")`)
+      : createLead({ name, phone, source: 'WhatsApp' }, 'from an incoming WhatsApp message');
+    addFirstFollowUp(lead);
+    isNew = true;
+  } else if (ad) {
+    log(lead, 'inbound', `Came back through Meta ad "${ad.campaign}"`);
+  }
+  log(lead, 'inbound', `WhatsApp: "${text}"`);
+  return isNew;
 }
 
 // ---------- WhatsApp sending ----------
@@ -370,22 +389,28 @@ async function handle(req, res) {
         }
         for (const msg of v.messages || []) {
           const text = msg.text?.body || `[${msg.type} message]`;
-          const ad = adFromMessage(msg);
-          let lead = findByPhone(msg.from);
-          if (!lead) {
-            lead = ad
-              ? createLead({ name: names[msg.from], phone: msg.from, source: 'Meta Ads', ...ad }, `from a Meta ad on WhatsApp ("${ad.campaign}")`)
-              : createLead({ name: names[msg.from], phone: msg.from, source: 'WhatsApp' }, 'from an incoming WhatsApp message');
-            addFirstFollowUp(lead);
-            created++;
-          } else if (ad) {
-            log(lead, 'inbound', `Came back through Meta ad "${ad.campaign}"`);
-          }
-          log(lead, 'inbound', `WhatsApp: "${text}"`);
+          if (recordInbound(msg.from, names[msg.from], text, adFromMessage(msg))) created++;
         }
       }
     }
     save();
+    return send(res, 200, { ok: true, created });
+  }
+
+  // ---- Interakt webhook (customer messages), signed with Interakt-Signature ----
+  if (p === '/webhooks/interakt' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!config.interaktSecret) return send(res, 403, { error: 'INTERAKT_SECRET is not set' });
+    const want = 'sha256=' + crypto.createHmac('sha256', config.interaktSecret).update(req.rawBody || '').digest('hex');
+    if (!safeEqual(req.headers['interakt-signature'] || '', want)) return send(res, 401, { error: 'Bad signature' });
+    const c = body.data?.customer || {}, m = body.data?.message || {};
+    let created = 0;
+    if (body.type === 'message_received' && m.chat_message_type === 'CustomerMessage' && c.channel_phone_number) {
+      const text = typeof m.message === 'string' && m.message ? m.message : `[${m.message_content_type || 'media'} message]`;
+      const ad = adFromMessage({ text: { body: text } });
+      if (recordInbound(c.channel_phone_number, c.traits?.name, text, ad)) created++;
+      save();
+    }
     return send(res, 200, { ok: true, created });
   }
 

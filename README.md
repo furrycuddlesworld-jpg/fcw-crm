@@ -38,6 +38,7 @@ Nothing is sent to anyone until `WHATSAPP_SEND=on` is set together with the API 
 | `WHATSAPP_APP_SECRET` | Your Meta app's secret (App settings > Basic). When set, WhatsApp webhooks without a valid Meta signature are rejected. Set it before connecting WhatsApp. |
 | `WHATSAPP_WEBHOOK_KEY` | For a WhatsApp partner such as 360dialog: give the partner the webhook URL `https://<your-domain>/webhooks/whatsapp?key=<this value>` |
 | `D360_API_KEY` | 360dialog API key for your number. Shows a **Connect WhatsApp (360dialog)** button under Messages that points 360dialog's webhook at the CRM. See [WHATSAPP-360DIALOG.md](WHATSAPP-360DIALOG.md). |
+| `INTERAKT_SECRET` | Secret key shared with Interakt's webhook (`/webhooks/interakt`). See [WHATSAPP-INTERAKT.md](WHATSAPP-INTERAKT.md). |
 | `PUBLIC_URL` | The CRM's own web address. Render fills this in automatically (`RENDER_EXTERNAL_URL`); set it only elsewhere. |
 | `WHATSAPP_VERIFY_TOKEN` | Any secret you choose, entered in Meta when setting up the webhook (default `fcw-verify`; change it) |
 | `GOOGLE_ADS_KEY` | The key you enter on the Google Ads lead form webhook (default `fcw-google-key`; change it) |
@@ -61,7 +62,7 @@ Both webhooks need the app to be on the internet over HTTPS (a small hosting ser
 
 `render.yaml` uses Render's Starter plan with a 1 GB disk at `/var/data`, so leads survive restarts and the reminder timer keeps running. The free plan cannot keep data: it wipes files on every restart and sleeps when idle, which stops reminders.
 
-`/healthz` is an open health check. Everything except `/healthz` and the two webhooks needs the password.
+`/healthz` is an open health check. Everything except `/healthz` and the `/webhooks/...` addresses needs the password.
 
 ## Things to know before going live
 
