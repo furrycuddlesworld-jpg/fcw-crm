@@ -302,7 +302,7 @@ async function pushToPhone(kind, lead, title, text, priority = 4) {
     const r = await fetch(config.ntfyServer, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic: config.ntfyTopic, title, message: text, priority, tags: [kind === 'new' ? 'new' : 'bell'], click: config.publicUrl || undefined, actions }),
+      body: JSON.stringify({ topic: config.ntfyTopic, title, message: text, priority, tags: [kind === 'new' ? 'new' : 'bell'], click: config.publicUrl ? `${config.publicUrl.replace(/\/$/, '')}/${lead ? '#lead=' + lead.id : ''}` : undefined, actions }),
     });
     Object.assign(msg, r.ok ? { status: 'sent', detail: 'Sent to your phone' } : { status: 'failed', detail: `Phone notification failed (HTTP ${r.status})` });
   } catch (e) {

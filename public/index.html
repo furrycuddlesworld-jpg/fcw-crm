@@ -267,6 +267,16 @@ function renderMessages() {
     : '<tr><td colspan="5" class="empty">No messages yet. They appear here when a follow-up comes due.</td></tr>';
 }
 
+// Notifications link to /#lead=ID, which opens that lead straight away.
+function openFromLink() {
+  const m = location.hash.match(/^#lead=(\w+)/);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname);
+  if (!LEADS.some((l) => l.id === m[1])) return;
+  openId = m[1]; detailTab = 'followups'; renderDetail();
+  if (!$('#leadDlg').open) $('#leadDlg').showModal();
+}
+
 function renderDetail() {
   const l = LEADS.find((x) => x.id === openId);
   if (!l) return $('#leadDlg').close();
@@ -449,6 +459,8 @@ document.addEventListener('submit', async (e) => {
   if (META.liveSending) { $('#mode').textContent = 'WhatsApp live'; $('#mode').classList.add('live'); }
   await refresh();
   setInterval(refresh, 30000);
+  openFromLink();
+  addEventListener('hashchange', openFromLink);
 })();
 </script>
 </body>
