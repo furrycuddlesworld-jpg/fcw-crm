@@ -134,6 +134,9 @@ function closeFirstFollowUp(lead, why) {
   }
 }
 
+// Leads that were handled before this rule existed.
+for (const l of db.leads || []) if (l.status !== 'New') closeFirstFollowUp(l, `Lead is already ${l.status}`);
+
 // Which Meta ad a WhatsApp chat came from. Click-to-WhatsApp ads attach a "referral" to the first
 // message; as a backup, an ad's pre-filled message can carry a code like "(Ad: DIWALI)".
 function adFromMessage(msg) {
@@ -486,8 +489,8 @@ async function handle(req, res) {
     if (lead.followUps.some((x) => !x.done && x.dueAt === f.dueAt && x.action === f.action && x.note === f.note && x.clientMessage === f.clientMessage)) {
       return send(res, 200, lead);
     }
-    lead.followUps.push(f);
     closeFirstFollowUp(lead, 'Replaced by the follow-up you scheduled');
+    lead.followUps.push(f);
     log(lead, 'scheduled', `${f.action === 'call' ? 'Call' : 'Follow-up'} scheduled for ${due.toISOString()}${f.clientMessage ? ' with a text to the client' : ''}`);
     if (lead.status === 'New') {
       log(lead, 'status', 'Status changed from New to Follow-up');

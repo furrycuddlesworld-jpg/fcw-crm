@@ -60,6 +60,15 @@
   @media (max-width: 640px) {
     .grid2 { grid-template-columns: 1fr; }
     .hide-sm { display: none; }
+    main { padding: 12px; }
+    header { gap: 8px 12px; padding: 10px 12px; }
+    nav button { padding: 6px 8px; }
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .btn.small { padding: 6px 10px; font-size: 13px; }
+    /* Follow-up rows stack on phones: name, then status and time, then the buttons. */
+    table.fus tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    table.fus td { border: 0; padding: 0; }
+    table.fus td:first-child, table.fus td:last-child { flex: 1 1 100%; white-space: normal !important; }
   }
 </style>
 </head>
@@ -211,8 +220,8 @@ function renderToday() {
       <td class="${dueClass(f.dueAt)}">${fmt(f.dueAt)}</td>
       <td style="white-space:nowrap">${l.phone ? `<a class="btn small" target="_blank" href="${waLink(l.phone, f.clientMessage)}" onclick="event.stopPropagation()">WhatsApp</a> <a class="btn small" href="tel:+${l.phone}" onclick="event.stopPropagation()">Call</a>` : ''}
         <button class="btn small" data-done="${l.id}:${f.id}">Done</button></td></tr>`;
-  $('#due').innerHTML = due.length ? `<table>${due.map(fuRow).join('')}</table>` : '<div class="empty">Nothing due. Nice.</div>';
-  $('#upcoming').innerHTML = soon.length ? `<table>${soon.map(fuRow).join('')}</table>` : '<div class="empty">No follow-ups scheduled.</div>';
+  $('#due').innerHTML = due.length ? `<table class="fus">${due.map(fuRow).join('')}</table>` : '<div class="empty">Nothing due. Nice.</div>';
+  $('#upcoming').innerHTML = soon.length ? `<table class="fus">${soon.map(fuRow).join('')}</table>` : '<div class="empty">No follow-ups scheduled.</div>';
   const ads = {};
   for (const l of LEADS.filter((x) => x.campaign)) {
     const k = l.source + '|' + l.campaign;
