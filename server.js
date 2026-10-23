@@ -118,9 +118,9 @@ function addFirstFollowUp(lead) {
 }
 
 // Tell the owner's phone straight away when a lead comes in.
-function alertNewLead(lead) {
+function alertNewLead(lead, again = false) {
   const from = [lead.source, lead.campaign].filter(Boolean).join(' · ');
-  pushToPhone('new', lead, `New lead: ${lead.name || 'no name'}`, `${lead.phone ? '+' + lead.phone : lead.email || ''}${from ? ' · ' + from : ''}`);
+  pushToPhone('new', lead, `${again ? 'Enquired again' : 'New lead'}: ${lead.name || 'no name'}`, `${lead.phone ? '+' + lead.phone : lead.email || ''}${from ? ' · ' + from : ''}`);
 }
 
 // Once the lead has been handled (status moved on, or a real follow-up planned), the automatic
@@ -661,6 +661,7 @@ async function handle(req, res) {
     if (existing) {
       log(existing, 'inbound', `Filled ${where} again${lead.notes ? '. ' + lead.notes : ''}`);
       existing.followUps.some((x) => !x.done) || addFirstFollowUp(existing);
+      alertNewLead(existing, true);
     } else {
       const created = createLead(lead, `from ${where}`);
       if (lead.page) log(created, 'inbound', `Page: ${lead.page.slice(0, 300)}`);
@@ -704,6 +705,7 @@ async function handle(req, res) {
     if (existing) {
       log(existing, 'inbound', `Submitted a Google Ads lead form again ("${campaign}")${answers.length ? '. ' + answers.join('; ') : ''}`);
       existing.followUps.some((f) => !f.done) || addFirstFollowUp(existing);
+      alertNewLead(existing, true);
     } else {
       const created = createLead(input, `from a Google Ads lead form ("${campaign}")`);
       addFirstFollowUp(created);

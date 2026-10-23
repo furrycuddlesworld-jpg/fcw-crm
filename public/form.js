@@ -32,14 +32,41 @@
     return t;
   }
 
+  // Submissions wait in this browser until the CRM confirms them, so a brief CRM restart loses nothing.
+  var QUEUE = 'fcw_crm_pending';
+  function pending() { try { return JSON.parse(localStorage.getItem(QUEUE) || '[]'); } catch (e) { return []; } }
+  function setPending(list) { try { localStorage.setItem(QUEUE, JSON.stringify(list.slice(-20))); } catch (e) {} }
+
+  function post(body) {
+    return fetch(endpoint, { method: 'POST', body: body, keepalive: true, headers: { 'Content-Type': 'text/plain;charset=UTF-8' } })
+      .then(function (r) { return r.ok || (r.status >= 400 && r.status < 500 && r.status !== 429); });
+  }
+
+  function flush(attempt) {
+    var list = pending();
+    if (!list.length || !window.fetch) return;
+    var body = list[0];
+    post(body).then(function (done) {
+      if (!done) throw new Error('retry');
+      setPending(pending().filter(function (b) { return b !== body; }));
+      flush(0);
+    }).catch(function () {
+      if (attempt < 6) setTimeout(function () { flush(attempt + 1); }, [5, 10, 20, 40, 60, 120][attempt] * 1000);
+    });
+  }
+
   function sendToCrm(data) {
     var body = JSON.stringify(data);
-    try {
-      // text/plain avoids a CORS preflight, so the copy still goes out if the page navigates away.
-      if (navigator.sendBeacon && navigator.sendBeacon(endpoint, new Blob([body], { type: 'text/plain;charset=UTF-8' }))) return;
-    } catch (e) {}
-    try { fetch(endpoint, { method: 'POST', body: body, keepalive: true, headers: { 'Content-Type': 'text/plain;charset=UTF-8' } }); } catch (e) {}
+    if (!window.fetch) {
+      try { navigator.sendBeacon && navigator.sendBeacon(endpoint, new Blob([body], { type: 'text/plain;charset=UTF-8' })); } catch (e) {}
+      return;
+    }
+    setPending(pending().concat([body]));
+    flush(0);
   }
+
+  // Anything left over from an earlier visit goes now.
+  flush(0);
 
   document.addEventListener('submit', function (e) {
     var form = e.target;
