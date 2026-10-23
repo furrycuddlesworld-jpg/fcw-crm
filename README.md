@@ -69,7 +69,9 @@ Both webhooks need the app to be on the internet over HTTPS (a small hosting ser
 
 `render.yaml` uses Render's Starter plan with a 1 GB disk at `/var/data`, so leads survive restarts and the reminder timer keeps running. The free plan cannot keep data: it wipes files on every restart and sleeps when idle, which stops reminders.
 
-`/healthz` is an open health check. Everything except `/healthz`, `/form.js` and the `/webhooks/...` addresses needs the password.
+`/healthz` is an open health check. Everything except `/healthz`, `/form.js`, the app icons and manifest, and the `/webhooks/...` addresses needs the password. You sign in once on the `/login` page and the browser remembers it for a year (`/logout` signs out; changing `APP_PASSWORD` signs everyone out).
+
+**On your phone as an app:** open the CRM in Safari (iPhone) or Chrome (Android), choose **Share > Add to Home Screen** (iPhone) or **Install app** (Android), and sign in once inside the app.
 
 ## Things to know before going live
 

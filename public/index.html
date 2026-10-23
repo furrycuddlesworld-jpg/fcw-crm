@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FCW CRM</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#1f7a5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FCW CRM">
 <style>
   :root {
     --bg: #f6f7f9; --panel: #fff; --text: #1d2330; --muted: #677085; --line: #e3e6eb;
@@ -176,6 +182,7 @@ const TEMPLATES = [
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (res.status === 401) { location.href = '/login?next=' + encodeURIComponent(location.pathname + location.hash); throw new Error('Please sign in'); }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
@@ -267,9 +274,10 @@ function renderMessages() {
     : '<tr><td colspan="5" class="empty">No messages yet. They appear here when a follow-up comes due.</td></tr>';
 }
 
-// Notifications link to /#lead=ID, which opens that lead straight away.
+// Notifications link to /?lead=ID, which opens that lead straight away.
 function openFromLink() {
-  const m = location.hash.match(/^#lead=(\w+)/);
+  // ?lead=ID (survives the sign-in page) or #lead=ID.
+  const m = (location.search + location.hash).match(/[?&#]lead=(\w+)/);
   if (!m) return;
   history.replaceState(null, '', location.pathname);
   if (!LEADS.some((l) => l.id === m[1])) return;

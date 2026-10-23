@@ -302,7 +302,7 @@ async function pushToPhone(kind, lead, title, text, priority = 4) {
     const r = await fetch(config.ntfyServer, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic: config.ntfyTopic, title, message: text, priority, tags: [kind === 'new' ? 'new' : 'bell'], click: config.publicUrl ? `${config.publicUrl.replace(/\/$/, '')}/${lead ? '#lead=' + lead.id : ''}` : undefined, actions }),
+      body: JSON.stringify({ topic: config.ntfyTopic, title, message: text, priority, tags: [kind === 'new' ? 'new' : 'bell'], click: config.publicUrl ? `${config.publicUrl.replace(/\/$/, '')}/${lead ? '?lead=' + lead.id : ''}` : undefined, actions }),
     });
     Object.assign(msg, r.ok ? { status: 'sent', detail: 'Sent to your phone' } : { status: 'failed', detail: `Phone notification failed (HTTP ${r.status})` });
   } catch (e) {
@@ -382,16 +382,46 @@ function validMetaSignature(req) {
   return given.length === want.length && crypto.timingSafeEqual(given, want);
 }
 
+// Signed-in browsers (and the home-screen app) carry a cookie derived from APP_PASSWORD,
+// so changing the password signs everyone out.
+const sessionToken = () => crypto.createHmac('sha256', config.appPassword).update('fcw-crm-session').digest('hex');
+function cookie(req, name) {
+  const hit = (req.headers.cookie || '').split(';').map((c) => c.trim().split('=')).find(([k]) => k === name);
+  return hit ? decodeURIComponent(hit.slice(1).join('=')) : '';
+}
 function authorized(req) {
   if (!config.appPassword) return true;
+  if (safeEqual(cookie(req, 'fcw_session'), sessionToken())) return true;
   const [scheme, encoded] = (req.headers.authorization || '').split(' ');
   if (scheme !== 'Basic' || !encoded) return false;
-  const given = Buffer.from(Buffer.from(encoded, 'base64').toString().split(':').slice(1).join(':'));
-  const want = Buffer.from(config.appPassword);
-  return given.length === want.length && crypto.timingSafeEqual(given, want);
+  return safeEqual(Buffer.from(encoded, 'base64').toString().split(':').slice(1).join(':'), config.appPassword);
 }
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
+const loginHits = new Map();
+function loginRateLimited(req) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  const t = Date.now(), recent = (loginHits.get(ip) || []).filter((x) => t - x < 10 * 60000);
+  recent.push(t);
+  loginHits.set(ip, recent);
+  return recent.length > 10;
+}
+
+function loginPage(error = '', next = '/') {
+  const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FCW CRM</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#1f7a5c"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f6f7f9;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1d2330}
+form{background:#fff;border:1px solid #e3e6eb;border-radius:14px;padding:24px;width:min(340px,90vw);display:flex;flex-direction:column;gap:12px}
+h1{font-size:20px;margin:0}input{font:inherit;padding:10px 12px;border:1px solid #e3e6eb;border-radius:8px}
+button{font:inherit;padding:10px;border:0;border-radius:8px;background:#1f7a5c;color:#fff;font-weight:600}.err{color:#b42318;font-size:13px}</style></head>
+<body><form method="post" action="/login"><h1>FCW CRM</h1>
+<input type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus required>
+<input type="hidden" name="next" value="${esc(next)}">${error ? `<div class="err">${esc(error)}</div>` : ''}
+<button>Sign in</button></form></body></html>`;
+}
+
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 // ---------- routes ----------
 async function handle(req, res) {
@@ -401,9 +431,30 @@ async function handle(req, res) {
   let r;
 
   if (p === '/healthz') return send(res, 200, { ok: true });
-  if (!p.startsWith('/webhooks/') && p !== '/form.js' && !authorized(req)) {
-    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="FCW CRM", charset="UTF-8"' });
-    return res.end('Password required');
+  if (p === '/login' && req.method === 'POST') {
+    const body = await readBody(req);
+    const next = /^\/(?!\/)/.test(body.next || '') ? body.next : '/';
+    if (loginRateLimited(req)) return send(res, 429, loginPage('Too many tries. Wait 10 minutes.', next), 'text/html');
+    if (!config.appPassword || !safeEqual(String(body.password || ''), config.appPassword)) {
+      return send(res, 401, loginPage('Wrong password', next), 'text/html');
+    }
+    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    res.writeHead(303, { Location: next, 'Set-Cookie': `fcw_session=${sessionToken()}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${secure}` });
+    return res.end();
+  }
+  if (p === '/login') return send(res, 200, loginPage('', url.searchParams.get('next') || '/'), 'text/html');
+  if (p === '/logout') {
+    res.writeHead(303, { Location: '/login', 'Set-Cookie': 'fcw_session=; Path=/; Max-Age=0' });
+    return res.end();
+  }
+
+  const open = p.startsWith('/webhooks/') || ['/form.js', '/manifest.webmanifest', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png'].includes(p);
+  if (!open && !authorized(req)) {
+    if (req.method === 'GET' && !p.startsWith('/api/')) {
+      res.writeHead(302, { Location: '/login?next=' + encodeURIComponent(p + url.search) });
+      return res.end();
+    }
+    return send(res, 401, { error: 'Please sign in again' });
   }
 
   if (p === '/api/meta' && req.method === 'GET') {
