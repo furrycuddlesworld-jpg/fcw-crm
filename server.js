@@ -10,6 +10,10 @@ const config = {
   dataFile: process.env.DATA_FILE || path.join(__dirname, 'data.json'),
   // Where reminders to you go. Must differ from the business number: WhatsApp cannot message itself.
   ownerPhone: process.env.OWNER_PHONE || '',
+  countryCode: String(process.env.DEFAULT_COUNTRY_CODE ?? '91').replace(/\D/g, ''),
+  // Phone notifications through the free ntfy app. The topic works like a password, so keep it long.
+  ntfyTopic: (process.env.NTFY_TOPIC || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 48),
+  ntfyServer: (process.env.NTFY_SERVER || 'https://ntfy.sh').replace(/\/$/, ''),
   // WhatsApp Business (Cloud API). Nothing is sent unless WHATSAPP_SEND=on and both values are set.
   waSend: process.env.WHATSAPP_SEND === 'on',
   waToken: process.env.WHATSAPP_TOKEN || '',
@@ -57,6 +61,13 @@ function save() {
 const id = () => crypto.randomBytes(6).toString('hex');
 const now = () => new Date().toISOString();
 const digits = (p) => String(p || '').replace(/\D/g, '');
+// Phone numbers with country code, so Call and WhatsApp links work: 98765 43210 or 098765 43210 become 919876543210.
+const phoneNum = (p) => {
+  let d = digits(p);
+  if (d.length === 11 && d[0] === '0') d = d.slice(1);
+  return d.length === 10 && config.countryCode ? config.countryCode + d : d;
+};
+for (const l of db.leads || []) if (l.phone) l.phone = phoneNum(l.phone);
 
 function log(lead, type, text) {
   lead.history.unshift({ at: now(), type, text });
@@ -64,15 +75,15 @@ function log(lead, type, text) {
 }
 
 function findByPhone(phone) {
-  const d = digits(phone);
-  return d ? db.leads.find((l) => digits(l.phone) === d) : null;
+  const d = phoneNum(phone);
+  return d ? db.leads.find((l) => phoneNum(l.phone) === d) : null;
 }
 
 function createLead(input, how) {
   const lead = {
     id: id(),
     name: (input.name || '').trim() || 'Unknown',
-    phone: digits(input.phone),
+    phone: phoneNum(input.phone),
     email: (input.email || '').trim(),
     source: SOURCES.includes(input.source) ? input.source : 'Other',
     referredBy: (input.referredBy || '').trim(),
@@ -106,6 +117,12 @@ function addFirstFollowUp(lead) {
   log(lead, 'scheduled', `First follow-up set for ${due.toISOString()}`);
 }
 
+// Tell the owner's phone straight away when a lead comes in.
+function alertNewLead(lead) {
+  const from = [lead.source, lead.campaign].filter(Boolean).join(' · ');
+  pushToPhone('new', lead, `New lead: ${lead.name || 'no name'}`, `${lead.phone ? '+' + lead.phone : lead.email || ''}${from ? ' · ' + from : ''}`);
+}
+
 // Once the lead has been handled (status moved on, or a real follow-up planned), the automatic
 // "New lead: reply or call" reminder has done its job.
 function closeFirstFollowUp(lead, why) {
@@ -137,6 +154,7 @@ function recordInbound(phone, name, text, ad) {
       ? createLead({ name, phone, source: 'Meta Ads', ...ad }, `from a Meta ad on WhatsApp ("${ad.campaign}")`)
       : createLead({ name, phone, source: 'WhatsApp' }, 'from an incoming WhatsApp message');
     addFirstFollowUp(lead);
+    alertNewLead(lead);
     isNew = true;
   } else if (ad) {
     log(lead, 'inbound', `Came back through Meta ad "${ad.campaign}"`);
@@ -268,6 +286,30 @@ async function queueMessage(kind, lead, to, text) {
   return msg;
 }
 
+// ---------- phone notifications (ntfy) ----------
+async function pushToPhone(kind, lead, title, text, priority = 4) {
+  if (!config.ntfyTopic) return null;
+  const actions = [];
+  if (lead?.phone) {
+    actions.push({ action: 'view', label: 'Call', url: `tel:+${lead.phone}` });
+    actions.push({ action: 'view', label: 'WhatsApp', url: `https://wa.me/${lead.phone}` });
+  }
+  const msg = { id: id(), at: now(), kind: 'push', leadId: lead?.id || '', leadName: lead?.name || '', to: '', text: `${title}: ${text}` };
+  try {
+    const r = await fetch(config.ntfyServer, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic: config.ntfyTopic, title, message: text, priority, tags: [kind === 'new' ? 'new' : 'bell'], click: config.publicUrl || undefined, actions }),
+    });
+    Object.assign(msg, r.ok ? { status: 'sent', detail: 'Sent to your phone' } : { status: 'failed', detail: `Phone notification failed (HTTP ${r.status})` });
+  } catch (e) {
+    Object.assign(msg, { status: 'failed', detail: `Phone notification failed: ${e.message}` });
+  }
+  db.outbox.unshift(msg);
+  save();
+  return msg;
+}
+
 // ---------- reminder engine ----------
 // Each follow-up fires once when due: a reminder to you, and (if chosen) a follow-up text to the client.
 let ticking = false;
@@ -284,7 +326,8 @@ async function tick() {
         changed = true;
         const what = f.action === 'call' ? 'Call' : 'Follow up with';
         const ownerText = `Reminder: ${what} ${lead.name} (+${lead.phone || 'no number'}). Status: ${lead.status}.${f.note ? ' Note: ' + f.note : ''}`;
-        await queueMessage('reminder', lead, config.ownerPhone, ownerText);
+        if (config.ownerPhone || !config.ntfyTopic) await queueMessage('reminder', lead, config.ownerPhone, ownerText);
+        await pushToPhone('reminder', lead, `${what} ${lead.name}`, `+${lead.phone || 'no number'} · ${lead.status}${f.note ? ' · ' + f.note : ''}`);
         if (f.clientMessage) {
           const m = await queueMessage('client', lead, lead.phone, f.clientMessage);
           log(lead, 'message', `Follow-up text to client (${m.detail}): "${f.clientMessage}"`);
@@ -366,8 +409,16 @@ async function handle(req, res) {
       sources: SOURCES,
       liveSending: config.waSend && !!config.waToken && !!config.waPhoneNumberId,
       ownerPhoneSet: !!config.ownerPhone,
+      ntfyTopic: config.ntfyTopic,
+      ntfyServer: config.ntfyServer,
       d360Ready: !!(config.d360ApiKey && config.waWebhookKey && config.publicUrl),
     });
+  }
+
+  if (p === '/api/push/test' && req.method === 'POST') {
+    if (!config.ntfyTopic) return send(res, 400, { error: 'Add NTFY_TOPIC in Render first' });
+    const m = await pushToPhone('test', null, 'FCW CRM', 'Test notification. Reminders will arrive like this.', 3);
+    return m.status === 'sent' ? send(res, 200, { ok: true }) : send(res, 502, { error: m.detail });
   }
 
   if (p === '/api/leads' && req.method === 'GET') return send(res, 200, db.leads);
@@ -397,7 +448,7 @@ async function handle(req, res) {
         if (body.status !== 'New') closeFirstFollowUp(lead, `Lead moved to ${body.status}`);
       }
       for (const k of ['name', 'email', 'referredBy', 'campaign', 'interest']) if (k in body) lead[k] = String(body[k]).trim();
-      if ('phone' in body) lead.phone = digits(body.phone);
+      if ('phone' in body) lead.phone = phoneNum(body.phone);
       if (body.source && SOURCES.includes(body.source)) lead.source = body.source;
       lead.updatedAt = now();
       save();
@@ -560,6 +611,7 @@ async function handle(req, res) {
       const created = createLead(lead, `from ${where}`);
       if (lead.page) log(created, 'inbound', `Page: ${lead.page.slice(0, 300)}`);
       addFirstFollowUp(created);
+      alertNewLead(created);
     }
     save();
     const thanks = lead.redirect || config.formThanksUrl;
@@ -598,7 +650,11 @@ async function handle(req, res) {
     if (existing) {
       log(existing, 'inbound', `Submitted a Google Ads lead form again ("${campaign}")${answers.length ? '. ' + answers.join('; ') : ''}`);
       existing.followUps.some((f) => !f.done) || addFirstFollowUp(existing);
-    } else addFirstFollowUp(createLead(input, `from a Google Ads lead form ("${campaign}")`));
+    } else {
+      const created = createLead(input, `from a Google Ads lead form ("${campaign}")`);
+      addFirstFollowUp(created);
+      alertNewLead(created);
+    }
     save();
     return send(res, 200, { ok: true });
   }

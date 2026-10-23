@@ -19,6 +19,8 @@ services:
         sync: false
       - key: OWNER_PHONE
         sync: false
+      - key: NTFY_TOPIC
+        generateValue: true
       - key: WHATSAPP_SEND
         value: "off"
       - key: WHATSAPP_VERIFY_TOKEN

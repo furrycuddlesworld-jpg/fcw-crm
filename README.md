@@ -32,6 +32,9 @@ Nothing is sent to anyone until `WHATSAPP_SEND=on` is set together with the API 
 | `APP_PASSWORD` | Password for opening the CRM; the browser asks for it once (any username works). Always set this when the app is online. |
 | `DATA_FILE` | Where leads are saved, default `data.json` next to `server.js` |
 | `OWNER_PHONE` | Where reminders to you go, with country code. It must be a different number from the business number (see below). |
+| `NTFY_TOPIC` | Turns on phone notifications for new leads and reminders through the free ntfy app. Render generates it; the CRM shows it under **Messages** with a **Send a test** button. Anyone who knows it can read your notifications, so keep it private. |
+| `NTFY_SERVER` | Only if you run your own ntfy server (default `https://ntfy.sh`) |
+| `DEFAULT_COUNTRY_CODE` | Added to 10-digit phone numbers so Call and WhatsApp links work (default `91`) |
 | `WHATSAPP_SEND` | `on` to really send messages. Anything else means test mode. |
 | `WHATSAPP_TOKEN` | WhatsApp Cloud API access token from Meta |
 | `WHATSAPP_PHONE_NUMBER_ID` | The phone number ID of your business number in Meta |

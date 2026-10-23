@@ -115,6 +115,12 @@
     <section>
       <h2>WhatsApp messages</h2>
       <p class="muted" id="msgNote"></p>
+      <div id="pushBox" class="hide" style="margin:10px 0;padding:12px;border:1px solid var(--line);border-radius:10px">
+        <b>Reminders on your phone</b>
+        <p class="muted" style="margin:6px 0">Install the free <b>ntfy</b> app (Play Store or App Store), tap <b>+</b>, and subscribe to this topic. You'll get a notification for every new lead and every reminder, with Call and WhatsApp buttons.</p>
+        <div class="row"><code id="pushTopic" style="user-select:all;padding:4px 8px;background:var(--bg,#f3f4f6);border-radius:6px"></code><button class="btn small" id="pushCopy">Copy</button><button class="btn small" id="pushTest">Send a test</button><span class="muted" id="pushMsg"></span></div>
+      </div>
+      <p id="pushOff" class="muted hide">Phone notifications are off. Add <code>NTFY_TOPIC</code> in Render to turn them on.</p>
       <p id="d360Box" class="hide"><button class="btn" id="d360Btn">Connect WhatsApp (360dialog)</button> <span class="muted" id="d360Msg">Sends your WhatsApp chats to this CRM.</span></p>
       <table>
         <thead><tr><th>When</th><th>Type</th><th>To</th><th>Message</th><th>Result</th></tr></thead>
@@ -245,8 +251,8 @@ function renderMessages() {
     : 'Test mode: reminders and client texts are recorded here but nothing is sent to anyone.';
   $('#msgRows').innerHTML = OUTBOX.length ? OUTBOX.map((m) => `<tr>
     <td class="muted" style="white-space:nowrap">${fmt(m.at)}</td>
-    <td>${m.kind === 'reminder' ? 'Reminder to you' : 'Text to client'}<div class="muted">${esc(m.leadName)}</div></td>
-    <td>${m.to ? '+' + esc(m.to) : '–'}</td>
+    <td>${m.kind === 'reminder' ? 'Reminder to you' : m.kind === 'push' ? 'Phone notification' : 'Text to client'}<div class="muted">${esc(m.leadName)}</div></td>
+    <td>${m.kind === 'push' ? 'Your phone' : m.to ? '+' + esc(m.to) : '–'}</td>
     <td>${esc(m.text)}</td>
     <td class="${m.status === 'failed' ? 'overdue' : ''}">${esc(m.detail)}</td></tr>`).join('')
     : '<tr><td colspan="5" class="empty">No messages yet. They appear here when a follow-up comes due.</td></tr>';
@@ -363,6 +369,13 @@ document.addEventListener('click', async (e) => {
   const row = t.closest('[data-open]');
   if (row) { openId = row.dataset.open; detailTab = 'followups'; renderDetail(); $('#leadDlg').showModal(); return; }
   if (t.id === 'closeDlg') return $('#leadDlg').close();
+  if (t.id === 'pushCopy') { navigator.clipboard?.writeText(META.ntfyTopic); $('#pushMsg').textContent = 'Copied'; return; }
+  if (t.id === 'pushTest') {
+    $('#pushMsg').textContent = 'Sending...';
+    try { await api('/api/push/test', { method: 'POST', body: {} }); $('#pushMsg').textContent = 'Sent. Check your phone.'; }
+    catch (err) { $('#pushMsg').textContent = err.message; }
+    return refresh();
+  }
   if (t.id === 'd360Btn') {
     $('#d360Msg').textContent = 'Connecting...';
     try { await api('/api/whatsapp/connect-360dialog', { method: 'POST' }); $('#d360Msg').textContent = 'Connected. New WhatsApp chats will now appear as leads.'; }
@@ -423,6 +436,7 @@ document.addEventListener('submit', async (e) => {
   $('#fSource').innerHTML += META.sources.map((s) => `<option>${s}</option>`).join('');
   $('#addSource').innerHTML = META.sources.map((s) => `<option ${s === 'Referral' ? 'selected' : ''}>${s}</option>`).join('');
   if (META.d360Ready) $('#d360Box').classList.remove('hide');
+  if (META.ntfyTopic) { $('#pushTopic').textContent = META.ntfyTopic; $('#pushBox').classList.remove('hide'); } else $('#pushOff').classList.remove('hide');
   if (META.liveSending) { $('#mode').textContent = 'WhatsApp live'; $('#mode').classList.add('live'); }
   await refresh();
   setInterval(refresh, 30000);
