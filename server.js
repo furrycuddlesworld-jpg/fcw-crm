@@ -106,6 +106,17 @@ function addFirstFollowUp(lead) {
   log(lead, 'scheduled', `First follow-up set for ${due.toISOString()}`);
 }
 
+// Once the lead has been handled (status moved on, or a real follow-up planned), the automatic
+// "New lead: reply or call" reminder has done its job.
+function closeFirstFollowUp(lead, why) {
+  for (const x of lead.followUps) {
+    if (!x.done && x.note === 'New lead: reply or call') {
+      x.done = true; x.doneAt = now();
+      log(lead, 'done', `"New lead: reply or call" closed: ${why}`);
+    }
+  }
+}
+
 // Which Meta ad a WhatsApp chat came from. Click-to-WhatsApp ads attach a "referral" to the first
 // message; as a backup, an ad's pre-filled message can carry a code like "(Ad: DIWALI)".
 function adFromMessage(msg) {
@@ -383,6 +394,7 @@ async function handle(req, res) {
       if (body.status && body.status !== lead.status && STATUSES.includes(body.status)) {
         log(lead, 'status', `Status changed from ${lead.status} to ${body.status}`);
         lead.status = body.status;
+        if (body.status !== 'New') closeFirstFollowUp(lead, `Lead moved to ${body.status}`);
       }
       for (const k of ['name', 'email', 'referredBy', 'campaign', 'interest']) if (k in body) lead[k] = String(body[k]).trim();
       if ('phone' in body) lead.phone = digits(body.phone);
@@ -419,7 +431,12 @@ async function handle(req, res) {
       firedAt: null,
       done: false,
     };
+    // A double click or a repeated save must not create the same follow-up twice.
+    if (lead.followUps.some((x) => !x.done && x.dueAt === f.dueAt && x.action === f.action && x.note === f.note && x.clientMessage === f.clientMessage)) {
+      return send(res, 200, lead);
+    }
     lead.followUps.push(f);
+    closeFirstFollowUp(lead, 'Replaced by the follow-up you scheduled');
     log(lead, 'scheduled', `${f.action === 'call' ? 'Call' : 'Follow-up'} scheduled for ${due.toISOString()}${f.clientMessage ? ' with a text to the client' : ''}`);
     if (lead.status === 'New') {
       log(lead, 'status', 'Status changed from New to Follow-up');
@@ -492,6 +509,7 @@ async function handle(req, res) {
           if (lead.status === 'New') {
             log(lead, 'status', 'Status changed from New to Contacted (you replied on WhatsApp)');
             lead.status = 'Contacted';
+            closeFirstFollowUp(lead, 'you replied on WhatsApp');
           }
         }
         for (const msg of v.messages || []) {

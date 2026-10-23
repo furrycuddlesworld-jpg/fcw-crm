@@ -292,7 +292,7 @@ function renderDetail() {
           <div class="row" style="margin-bottom:6px">${TEMPLATES.map(([t], i) => `<button type="button" class="btn small" data-tpl="${i}">${t}</button>`).join('')}</div>
           <textarea name="clientMessage">${esc(fill(TEMPLATES[0][1], l))}</textarea>
         </div>
-        <div><button class="btn primary">Schedule</button></div>
+        <div class="row"><button class="btn primary">Schedule</button><span id="fuSaved" class="muted hide">Scheduled. It's in the list above.</span></div>
       </form>
     </div>
 
@@ -394,9 +394,15 @@ document.addEventListener('submit', async (e) => {
       openId = lead.id; detailTab = 'followups'; renderDetail(); $('#leadDlg').showModal();
     } else if (f.id === 'fuForm') {
       e.preventDefault();
+      const btn = f.querySelector('button.primary');
+      if (btn.disabled) return;
+      btn.disabled = true; btn.textContent = 'Saving...';
       if (!$('#sendClient').checked) data.clientMessage = '';
-      await api(`/api/leads/${openId}/followups`, { method: 'POST', body: { ...data, dueAt: new Date(data.dueAt).toISOString() } });
-      refresh();
+      try {
+        await api(`/api/leads/${openId}/followups`, { method: 'POST', body: { ...data, dueAt: new Date(data.dueAt).toISOString() } });
+      } finally { btn.disabled = false; btn.textContent = 'Schedule'; }
+      await refresh();
+      const ok = $('#fuSaved'); if (ok) { ok.classList.remove('hide'); setTimeout(() => ok.classList.add('hide'), 3000); }
     } else if (f.id === 'noteForm') {
       e.preventDefault();
       await api(`/api/leads/${openId}/notes`, { method: 'POST', body: data });
