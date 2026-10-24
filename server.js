@@ -655,10 +655,17 @@ async function handle(req, res) {
     if (config.formKey && !safeEqual(lead.key || url.searchParams.get('key') || '', config.formKey)) return reply(403, { error: 'Bad form key' });
     if (lead.honeypot) return reply(200, { ok: true }); // a bot filled the hidden field
     if (formRateLimited(req)) return reply(429, { error: 'Too many submissions, try again later' });
-    if (!lead.phone && !lead.email) return reply(400, { error: 'A phone number or email is needed' });
+    // Junk like "3" or "3162" is not a phone number: keep 8 to 15 digits only.
+    lead.phone = phoneNum(lead.phone);
+    if (lead.phone && (lead.phone.length < 8 || lead.phone.length > 15)) lead.phone = '';
+    if (lead.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) lead.email = '';
+    if (!lead.phone && !lead.email) return reply(400, { error: 'A valid phone number or email is needed' });
     const existing = lead.phone ? findByPhone(lead.phone) : db.leads.find((l) => l.email && l.email.toLowerCase() === lead.email.toLowerCase());
     const where = `${lead.source === 'Website' ? 'the website form' : `a ${lead.source} landing page`}${lead.campaign ? ` ("${lead.campaign}")` : ''}`;
     if (existing) {
+      // The same person pressing submit several times in a row counts once.
+      const last = existing.history?.find((h) => h.type === 'inbound' || h.type === 'created');
+      if (last && Date.now() - new Date(last.at).getTime() < 10 * 60000) return reply(200, { ok: true, duplicate: true });
       log(existing, 'inbound', `Filled ${where} again${lead.notes ? '. ' + lead.notes : ''}`);
       existing.followUps.some((x) => !x.done) || addFirstFollowUp(existing);
       alertNewLead(existing, true);

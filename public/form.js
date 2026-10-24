@@ -42,15 +42,21 @@
       .then(function (r) { return r.ok || (r.status >= 400 && r.status < 500 && r.status !== 429); });
   }
 
+  // One send at a time, so several clicks never post the same form twice.
+  var busy = false;
   function flush(attempt) {
+    if (busy) return;
     var list = pending();
     if (!list.length || !window.fetch) return;
     var body = list[0];
+    busy = true;
     post(body).then(function (done) {
+      busy = false;
       if (!done) throw new Error('retry');
       setPending(pending().filter(function (b) { return b !== body; }));
       flush(0);
     }).catch(function () {
+      busy = false;
       if (attempt < 6) setTimeout(function () { flush(attempt + 1); }, [5, 10, 20, 40, 60, 120][attempt] * 1000);
     });
   }
@@ -61,7 +67,7 @@
       try { navigator.sendBeacon && navigator.sendBeacon(endpoint, new Blob([body], { type: 'text/plain;charset=UTF-8' })); } catch (e) {}
       return;
     }
-    setPending(pending().concat([body]));
+    if (pending().indexOf(body) === -1) setPending(pending().concat([body]));
     flush(0);
   }
 
