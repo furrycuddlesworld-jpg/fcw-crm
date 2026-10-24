@@ -95,6 +95,21 @@
     for (var k in t) if (!(k in data)) data[k] = t[k];
     data.page_url = location.href;
     data.form_key = key;
+
+    // Elementor checks the form on its server first. Only copy it to the CRM once Elementor says
+    // it was accepted, so the CRM gets exactly what your form (and Google Sheet) gets.
+    if (/\belementor-form\b/.test(form.className) && window.jQuery) {
+      form.__fcwData = data;
+      if (!form.__fcwBound) {
+        form.__fcwBound = true;
+        var onSuccess = function () {
+          if (form.__fcwData) { sendToCrm(form.__fcwData); form.__fcwData = null; }
+        };
+        window.jQuery(form).on('submit_success', onSuccess);
+        form.addEventListener('submit_success', onSuccess);
+      }
+      return;
+    }
     sendToCrm(data);
   }, true);
 })();
